@@ -19,6 +19,12 @@ class Dataset:
     edge_feat: np.ndarray  # float, 2D
     node_feat: np.ndarray  # float, 2D
 
+    def __post_init__(self) -> None:
+        self.n_sample = self.src_id.shape[0]
+        self.unique_nodes = set(self.src_id) | set(self.dst_id)
+
+        self._shape_check()
+
     def _shape_check(self) -> None:
         """Check whether all attributes have correct shapes.
         """
@@ -29,12 +35,6 @@ class Dataset:
         assert self.edge_idx.shape == (self.n_sample,)
         assert len(self.edge_feat.shape) == 2
         assert len(self.node_feat.shape) == 2
-
-    def __post_init__(self) -> None:
-        self.n_sample = self.src_id.shape[0]
-        self.unique_nodes = set(self.src_id) | set(self.dst_id)
-
-        self._shape_check()
 
     @property
     def n_unique_nodes(self) -> int:
@@ -53,17 +53,17 @@ class Dataset:
         assert lower is not None or upper is not None
         lower = float("-inf") if lower is None else lower
         upper = float("inf") if upper is None else upper
-        select: np.ndarray = lower <= self.ts & self.ts < upper
+        select: np.ndarray = np.logical_and(lower <= self.ts, self.ts < upper)
         return self._get_subset_by_indicator(name, select)
 
     def get_subset_by_removing_nodes(self, name: str, nodes: Set[int]) -> Dataset:
         remove_nodes = np.array(list(nodes))
-        remove: np.ndarray = np.isin(self.src_id, remove_nodes) | np.isin(self.dst_id, remove_nodes)
+        remove: np.ndarray = np.logical_or(np.isin(self.src_id, remove_nodes), np.isin(self.dst_id, remove_nodes))
         return self._get_subset_by_indicator(name, ~remove)
 
     def get_subset_by_selecting_nodes(self, name: str, nodes: Set[int]) -> Dataset:
         remove_nodes = np.array(list(nodes))
-        select: np.ndarray = np.isin(self.src_id, remove_nodes) | np.isin(self.dst_id, remove_nodes)
+        select: np.ndarray = np.logical_or(np.isin(self.src_id, remove_nodes), np.isin(self.dst_id, remove_nodes))
         return self._get_subset_by_indicator(name, select)
 
     def describe(self) -> None:
