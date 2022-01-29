@@ -1,9 +1,11 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import torch
 from torch import nn
+
+from module.memory import Message
 
 
 class AbsMessageAggregator(nn.Module, metaclass=ABCMeta):
@@ -11,17 +13,20 @@ class AbsMessageAggregator(nn.Module, metaclass=ABCMeta):
         super(AbsMessageAggregator, self).__init__()
 
     @abstractmethod
-    def aggregate(self, nodes: np.ndarray, messages: torch.Tensor) -> torch.Tensor:
+    def aggregate(
+        self, nodes: np.ndarray,
+        messages: Dict[int, List[Message]]
+    ) -> Tuple[np.ndarray, torch.Tensor, torch.Tensor]:
         """
         Args:
             nodes: np.ndarray
                 shape = (batch_size,)
-            messages: torch.Tensor
-                shape = (batch_size, message_dim)
+            messages: Dict[int, List[Message]]
 
         Returns:
-            aggr_messages: torch.Tensor
-                shape = (n_unique_nodes, message_dim)
+            unique_nodes: np.ndarray
+            unique_message: torch.Tensor
+            unique_ts: torch.Tensor
         """
         raise NotImplementedError
 

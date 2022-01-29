@@ -28,22 +28,20 @@ class MemorySnapshot:
 class Memory(nn.Module):
     def __init__(
         self,
-        n_nodes: int, input_dim: int, memory_dim: int,
-        device: str = 'cpu', message_dim: int = None, aggr_method: str = 'sum',
+        num_nodes: int,
+        memory_dim: int,
+        aggr_method: str = 'sum',
     ) -> None:
         super(Memory, self).__init__()
-        self._n_nodes = n_nodes
-        self._input_dim = input_dim
+        self._num_nodes = num_nodes
         self._memory_dim = memory_dim
-        self._device = device
-        self._message_dim = message_dim
         self._aggr_method = aggr_method
 
         self._memory = nn.Parameter(
-            torch.zeros((self._n_nodes, self._memory_dim)).to(self._device), requires_grad=False
+            torch.zeros((self._num_nodes, self._memory_dim)), requires_grad=False
         )
         self._last_update = nn.Parameter(
-            torch.zeros(self._n_nodes).to(self._device), requires_grad=False
+            torch.zeros(self._num_nodes), requires_grad=False
         )
         self._messages: Dict[int, List[Message]] = defaultdict(list)
 

@@ -8,6 +8,7 @@ class TimeEncoder(torch.nn.Module):
     def __init__(self, dimension: int) -> None:
         super(TimeEncoder, self).__init__()
 
+        self._dimension = dimension
         self._weight = torch.nn.Linear(1, dimension)
 
         self._weight.weight = torch.nn.Parameter(
@@ -22,3 +23,7 @@ class TimeEncoder(torch.nn.Module):
 
     def _forward_unimplemented(self, *input: Any) -> None:
         pass
+
+    @property
+    def dimension(self) -> int:
+        return self._dimension
