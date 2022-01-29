@@ -28,23 +28,28 @@ class MemoryParams:
 
 @dataclass
 class DataBatch:
-    src_ids: np.ndarray
-    dst_ids: np.ndarray
-    ts: np.ndarray
-    edge_feat: np.ndarray
+    src_ids: torch.Tensor
+    dst_ids: torch.Tensor
+    timestamps: torch.Tensor
+    edge_features: torch.Tensor
 
     @property
     def size(self) -> int:
         return len(self.src_ids)
+
+    def to(self, device: torch.device) -> None:
+        self.src_ids.to(device)
+        self.dst_ids.to(device)
+        self.timestamps.to(device)
+        self.edge_features.to(device)
 
 
 class TGN(nn.Module):
     def __init__(
         self,
         num_nodes: int,
-        node_feat_dim: int,
-        edge_feat_dim: int,
-        num_layers: int = 2,
+        node_feature_dim: int,
+        edge_feature_dim: int,
         memory_params: MemoryParams = None,
         neighbor_finder: NeighborFinder = None,
         device: str = 'cpu',
@@ -52,9 +57,8 @@ class TGN(nn.Module):
         super(TGN, self).__init__()
 
         self._num_nodes = num_nodes
-        self._node_feat_dim = node_feat_dim
-        self._edge_feat_dim = edge_feat_dim
-        self._num_layers = num_layers
+        self._node_feat_dim = node_feature_dim
+        self._edge_feat_dim = edge_feature_dim
 
         self._time_encoder = TimeEncoder(dimension=self._node_feat_dim)
 
@@ -65,13 +69,12 @@ class TGN(nn.Module):
 
         self._device = device
 
-        self._emb_module = AbsEmbeddingModule()  # TODO
+        self._emb_module = AbsEmbeddingModule(num_nodes, embedding_dim=128)  # TODO: remove constant numbers
 
         self._neighbor_finder = neighbor_finder
 
         self._affinity_score = MergeLayer(
-            input_dim_1=self._node_feat_dim, input_dim_2=self._node_feat_dim,
-            hidden_dim=self._node_feat_dim, output_dim=1
+            input_dim_1=128, input_dim_2=128, hidden_dim=256, output_dim=1  # TODO: remove constant numbers
         )
 
     def _init_memory(self) -> None:
@@ -93,22 +96,22 @@ class TGN(nn.Module):
         raise NotImplementedError  # TODO
 
     def _compute_temporal_embeddings_without_memory(
-        self, batch: DataBatch, n_neighbors: int = 20
+        self, batch: DataBatch
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        src_emb = self._emb_module.compute_embedding(batch.src_ids, batch.ts, self._num_layers, n_neighbors)
-        dst_emb = self._emb_module.compute_embedding(batch.dst_ids, batch.ts, self._num_layers, n_neighbors)
+        src_emb = self._emb_module.compute_embedding(batch.src_ids, batch.timestamps)
+        dst_emb = self._emb_module.compute_embedding(batch.dst_ids, batch.timestamps)
         return src_emb, dst_emb
 
     def compute_temporal_embeddings(
-        self, batch: DataBatch, n_neighbors: int = 20
+        self, batch: DataBatch
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if self._use_memory:
-            return self._compute_temporal_embeddings_with_memory(batch, n_neighbors)
+            return self._compute_temporal_embeddings_with_memory(batch)
         else:
-            return self._compute_temporal_embeddings_without_memory(batch, n_neighbors)
+            return self._compute_temporal_embeddings_without_memory(batch)
 
-    def compute_edge_probabilities(self, batch: DataBatch, n_neighbors: int = 20) -> torch.Tensor:
-        src_emb, dst_emb = self.compute_temporal_embeddings(batch, n_neighbors)  # (B, emb_dim), (B, emb_dim)
+    def compute_edge_probabilities(self, batch: DataBatch) -> torch.Tensor:
+        src_emb, dst_emb = self.compute_temporal_embeddings(batch)  # (B, emb_dim), (B, emb_dim)
         score = self._affinity_score(src_emb, dst_emb).squeeze()  # (B,)
         return score.sigmoid()  # (B,)
 
@@ -129,8 +132,8 @@ class TGN(nn.Module):
     def _get_raw_message(
         self, batch: DataBatch, src_emb: torch.Tensor, dst_emb: torch.Tensor
     ) -> Tuple[np.ndarray, Dict[int, List[Message]]]:
-        ts = torch.from_numpy(batch.ts).float().to(self._device)
-        edge_feat = torch.from_numpy(batch.edge_feat).float().to(self._device)
+        ts = torch.from_numpy(batch.timestamps).float().to(self._device)
+        edge_feat = torch.from_numpy(batch.edge_features).float().to(self._device)
 
         src_memory = src_emb if self._memory_params.use_src_emb_in_message else self._memory.get_memory(batch.src_ids)
         dst_memory = dst_emb if self._memory_params.use_dst_emb_in_message else self._memory.get_memory(batch.dst_ids)

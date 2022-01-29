@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 
-import numpy as np
 import torch
 from torch import nn
 
 
 class Message(object):
-    def __init__(self, ts: float, content: Union[np.ndarray, torch.Tensor]) -> None:
+    def __init__(self, ts: float, content: torch.Tensor) -> None:
         self.ts = ts  # TODO: clarity data type
-        self.content = content  # TODO: clarity data type
+        self.content = content
 
     def clone(self) -> Message:
         return Message(self.ts, self.content.clone())
@@ -49,17 +48,17 @@ class Memory(nn.Module):
         for node_id, messages in message_dict.items():
             self._messages[node_id] += messages
 
-    def clear_messages(self, nodes: np.ndarray) -> None:
-        for node_id in nodes:
+    def clear_messages(self, nodes: torch.Tensor) -> None:
+        for node_id in nodes.long().detach().numpy():
             self._messages[node_id].clear()
 
-    def get_memory(self, nodes: np.ndarray) -> torch.Tensor:
+    def get_memory(self, nodes: torch.Tensor) -> torch.Tensor:
         return self._memory[nodes, :]
 
-    def set_memory(self, nodes: np.ndarray, values: torch.Tensor) -> None:
+    def set_memory(self, nodes: torch.Tensor, values: torch.Tensor) -> None:
         self._memory[nodes, :] = values
 
-    def get_last_update(self, nodes: np.ndarray) -> torch.Tensor:
+    def get_last_update(self, nodes: torch.Tensor) -> torch.Tensor:
         return self._last_update[nodes]
 
     @property
