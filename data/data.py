@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import random
 from abc import abstractmethod
-from typing import List, Set, Tuple
 from dataclasses import dataclass
+from typing import Generator, Set, Tuple
 
 import numpy as np
 import pandas as pd
+import torch
 
 
 class AbsFeatureRepo(object):
@@ -19,6 +20,26 @@ class AbsFeatureRepo(object):
 
     @abstractmethod
     def get_edge_feature(self, edges: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def num_nodes(self) -> int:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def num_edges(self) -> int:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def node_feature_dim(self) -> int:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def edge_feature_dim(self) -> int:
         raise NotImplementedError
 
 
@@ -43,6 +64,42 @@ class StaticFeatureRepo(AbsFeatureRepo):
     def get_edge_feature(self, edges: np.ndarray) -> np.ndarray:
         return self._edge_feature[edges]
 
+    @property
+    def num_nodes(self) -> int:
+        return self._node_feature.shape[0]
+
+    @property
+    def num_edges(self) -> int:
+        return self._edge_feature.shape[0]
+
+    @property
+    def node_feature_dim(self) -> int:
+        return self._node_feature.shape[1]
+
+    @property
+    def edge_feature_dim(self) -> int:
+        return self._edge_feature.shape[1]
+
+
+@dataclass
+class DataBatch:
+    src_ids: torch.Tensor
+    dst_ids: torch.Tensor
+    timestamps: torch.Tensor
+    edge_ids: torch.Tensor
+    labels: torch.Tensor
+
+    @property
+    def size(self) -> int:
+        return len(self.src_ids)
+
+    def to(self, device: torch.device) -> None:
+        self.src_ids.to(device)
+        self.dst_ids.to(device)
+        self.timestamps.to(device)
+        self.edge_ids.to(device)
+        self.labels.to(device)
+
 
 @dataclass
 class Dataset:
@@ -50,8 +107,8 @@ class Dataset:
     src_ids: np.ndarray     # int, 1D
     dst_ids: np.ndarray     # int, 1D
     timestamps: np.ndarray  # float, 1D
+    edge_ids: np.ndarray  # int, 1D
     labels: np.ndarray      # int, 1D (0 or 1)
-    edge_ids: np.ndarray    # int, 1D
 
     def __post_init__(self) -> None:
         self.n_sample = self.src_ids.shape[0]
@@ -65,8 +122,8 @@ class Dataset:
         assert self.src_ids.shape == (self.n_sample,)
         assert self.dst_ids.shape == (self.n_sample,)
         assert self.timestamps.shape == (self.n_sample,)
-        assert self.labels.shape == (self.n_sample,)
         assert self.edge_ids.shape == (self.n_sample,)
+        assert self.labels.shape == (self.n_sample,)
 
     @property
     def num_unique_nodes(self) -> int:
@@ -99,24 +156,37 @@ class Dataset:
     def describe(self) -> None:
         print(f"Dataset {self.name} has {self.n_sample} edges and {self.num_unique_nodes} unique nodes.")
 
+    def batch_generator(self, batch_size: int) -> Generator[DataBatch, None, None]:
+        start_idx = 0
+        while start_idx < self.n_sample:
+            end_idx = min(self.n_sample, start_idx + batch_size)
+            batch = DataBatch(
+                src_ids=torch.from_numpy(self.src_ids[start_idx:end_idx]).long(),
+                dst_ids=torch.from_numpy(self.dst_ids[start_idx:end_idx]).long(),
+                timestamps=torch.from_numpy(self.timestamps[start_idx:end_idx]).float(),
+                edge_ids=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long(),
+                labels=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long(),
+            )
+            yield batch
+            start_idx = end_idx
+
 
 def get_self_supervised_data(
     workspace_path: str,
-    dataset_name: str,
     different_new_nodes_between_val_and_test: bool = False,
     randomize_features: bool = False,
-) -> Tuple[List[Dataset], AbsFeatureRepo]:
+) -> Tuple[Dataset, Dataset, Dataset, Dataset, Dataset, Dataset, AbsFeatureRepo]:
     # Load data from files
-    graph_df = pd.read_csv(f'{workspace_path}/data/ml_{dataset_name}.csv')
-    edge_feature = np.load(f'{workspace_path}/data/ml_{dataset_name}.npy')
-    node_feature = np.load(f'{workspace_path}/data/ml_{dataset_name}_node.npy')
+    graph_df = pd.read_csv(f'{workspace_path}/data/graph.csv')
+    edge_feature = np.load(f'{workspace_path}/data/edge_feature.npy')
+    node_feature = np.load(f'{workspace_path}/data/node_feature.npy')
     if randomize_features:
         node_feature = np.random.rand(*node_feature.shape)
 
     # Create full data
     full_data = Dataset(
         name='full_data',
-        src_ids=graph_df.u.values, dst_ids=graph_df.i.values, timestamps=graph_df.timestamps.values,
+        src_ids=graph_df.u.values, dst_ids=graph_df.i.values, timestamps=graph_df.ts.values,
         labels=graph_df.label.values, edge_ids=graph_df.idx.values,
     )
     feature_repo = StaticFeatureRepo(node_feature=node_feature, edge_feature=edge_feature)
@@ -148,12 +218,11 @@ def get_self_supervised_data(
     new_node_test_data = test_data.get_subset_by_selecting_nodes('new_node_test_data', test_new_nodes)
 
     # Show descriptions of all datasets
-    datasets = [full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data]
-    for data in datasets:
+    for data in [full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data]:
         data.describe()
 
-    return datasets, feature_repo
+    return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
 
 
 if __name__ == '__main__':
-    get_self_supervised_data('C:/workspace/tgn-workspace', 'wikipedia', different_new_nodes_between_val_and_test=False)
+    get_self_supervised_data('C:/workspace/tgn-workspace', different_new_nodes_between_val_and_test=False)

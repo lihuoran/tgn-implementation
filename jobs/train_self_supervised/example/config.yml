@@ -1,0 +1,7 @@
+job_type: train_self_supervised
+workspace_path: C:/workspace/tgn-workspace
+training:
+  train_batch_size: 128
+  eval_batch_size: 128
+  num_epoch: 5
+  backprop_every: 10

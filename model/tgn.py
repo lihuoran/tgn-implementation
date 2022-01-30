@@ -6,14 +6,15 @@ import numpy as np
 import torch
 from torch import nn
 
-from module.embedding_module import AbsEmbeddingModule
+from data.data import DataBatch
+from module.embedding_module import SimpleEmbeddingModule
 from module.memory import Memory, Message
 from module.memory_updater import AbsMemoryUpdater
 from module.merge_layer import MergeLayer
 from module.message_aggregator import AbsMessageAggregator
 from module.message_function import AbsMessageFunction
 from module.time_encoder import TimeEncoder
-from utils import NeighborFinder
+from utils.training import NeighborFinder
 
 
 @dataclass
@@ -24,24 +25,6 @@ class MemoryParams:
     memory_update_at_start: bool = True
     use_src_emb_in_message: bool = False
     use_dst_emb_in_message: bool = False
-
-
-@dataclass
-class DataBatch:
-    src_ids: torch.Tensor
-    dst_ids: torch.Tensor
-    timestamps: torch.Tensor
-    edge_features: torch.Tensor
-
-    @property
-    def size(self) -> int:
-        return len(self.src_ids)
-
-    def to(self, device: torch.device) -> None:
-        self.src_ids.to(device)
-        self.dst_ids.to(device)
-        self.timestamps.to(device)
-        self.edge_features.to(device)
 
 
 class TGN(nn.Module):
@@ -69,13 +52,21 @@ class TGN(nn.Module):
 
         self._device = device
 
-        self._emb_module = AbsEmbeddingModule(num_nodes, embedding_dim=128)  # TODO: remove constant numbers
+        self._emb_module = SimpleEmbeddingModule(num_nodes, embedding_dim=128)  # TODO: remove constant numbers
 
         self._neighbor_finder = neighbor_finder
 
         self._affinity_score = MergeLayer(
             input_dim_1=128, input_dim_2=128, hidden_dim=256, output_dim=1  # TODO: remove constant numbers
         )
+
+    def train_mode(self) -> None:
+        self.train()
+        self._emb_module.train()
+
+    def eval_mode(self) -> None:
+        self.eval()
+        self._emb_module.eval()
 
     def _init_memory(self) -> None:
         # if self._memory_params.message_func == 'identity':
@@ -133,7 +124,7 @@ class TGN(nn.Module):
         self, batch: DataBatch, src_emb: torch.Tensor, dst_emb: torch.Tensor
     ) -> Tuple[np.ndarray, Dict[int, List[Message]]]:
         ts = torch.from_numpy(batch.timestamps).float().to(self._device)
-        edge_feat = torch.from_numpy(batch.edge_features).float().to(self._device)
+        edge_feat = torch.from_numpy(batch.edge_ids).float().to(self._device)
 
         src_memory = src_emb if self._memory_params.use_src_emb_in_message else self._memory.get_memory(batch.src_ids)
         dst_memory = dst_emb if self._memory_params.use_dst_emb_in_message else self._memory.get_memory(batch.dst_ids)

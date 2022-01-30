@@ -3,9 +3,10 @@ from typing import Any, Optional
 
 import torch
 from torch import nn
+from torch.nn.functional import embedding
 
 from data.data import AbsFeatureRepo
-from utils import NeighborFinder
+from utils.training import NeighborFinder
 
 
 class AbsEmbeddingModule(nn.Module, metaclass=ABCMeta):
@@ -50,9 +51,8 @@ class SimpleEmbeddingModule(AbsEmbeddingModule):
     def __init__(self, num_nodes: int, embedding_dim: int) -> None:
         super(SimpleEmbeddingModule, self).__init__(num_nodes, embedding_dim)
 
-        self._embedding = nn.Embedding(num_embeddings=num_nodes, embedding_dim=embedding_dim)
+        self._embedding = nn.Parameter(torch.rand(num_nodes, embedding_dim))
 
-    @abstractmethod
     def compute_embedding(
         self,
         nodes: torch.Tensor,
@@ -60,4 +60,4 @@ class SimpleEmbeddingModule(AbsEmbeddingModule):
         memory: torch.Tensor = None,
         time_diffs: torch.Tensor = None,
     ) -> torch.Tensor:
-        return self._embedding(nodes)
+        return embedding(nodes, self._embedding)
