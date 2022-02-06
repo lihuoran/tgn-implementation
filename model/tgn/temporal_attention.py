@@ -3,7 +3,7 @@ from typing import Any, Tuple
 import torch
 from torch import nn
 
-from .merge_layer import MergeLayer
+from model.tgn.merge_layer import MergeLayer
 
 
 class TemporalAttentionLayer(torch.nn.Module):

@@ -1,18 +1,18 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
-from torch import nn
 
-from data.data import DataBatch
-from module.embedding_module import SimpleEmbeddingModule
-from module.memory import Memory, Message
-from module.memory_updater import AbsMemoryUpdater
-from module.merge_layer import MergeLayer
-from module.message_aggregator import AbsMessageAggregator
-from module.message_function import AbsMessageFunction
+from data.data import AbsFeatureRepo, DataBatch
+from model.abs_model import AbsModel
+from model.tgn.embedding_module import AbsEmbeddingModule
+from model.tgn.memory import Memory, MemorySnapshot, Message
+from model.tgn.memory_updater import AbsMemoryUpdater
+from model.tgn.merge_layer import MergeLayer
+from model.tgn.message_aggregator import AbsMessageAggregator
+from model.tgn.message_function import AbsMessageFunction
 from module.time_encoder import TimeEncoder
 from utils.training import NeighborFinder
 
@@ -27,23 +27,16 @@ class MemoryParams:
     use_dst_emb_in_message: bool = False
 
 
-class TGN(nn.Module):
+class TGN(AbsModel):
     def __init__(
         self,
-        num_nodes: int,
-        node_feature_dim: int,
-        edge_feature_dim: int,
+        feature_repo: AbsFeatureRepo,
+        emb_module: AbsEmbeddingModule,
         memory_params: MemoryParams = None,
         neighbor_finder: NeighborFinder = None,
         device: str = 'cpu',
     ) -> None:
-        super(TGN, self).__init__()
-
-        self._num_nodes = num_nodes
-        self._node_feat_dim = node_feature_dim
-        self._edge_feat_dim = edge_feature_dim
-
-        self._time_encoder = TimeEncoder(dimension=self._node_feat_dim)
+        super(TGN, self).__init__(feature_repo)
 
         self._use_memory = memory_params is not None
         self._memory_params = memory_params
@@ -52,12 +45,15 @@ class TGN(nn.Module):
 
         self._device = device
 
-        self._emb_module = SimpleEmbeddingModule(num_nodes, embedding_dim=128)  # TODO: remove constant numbers
+        self._emb_module = emb_module
 
         self._neighbor_finder = neighbor_finder
 
         self._affinity_score = MergeLayer(
-            input_dim_1=128, input_dim_2=128, hidden_dim=256, output_dim=1  # TODO: remove constant numbers
+            input_dim_1=self._emb_module.embedding_dim,
+            input_dim_2=self._emb_module.embedding_dim,
+            hidden_dim=256,
+            output_dim=1  # TODO: remove constant numbers
         )
 
     def train_mode(self) -> None:
@@ -69,6 +65,8 @@ class TGN(nn.Module):
         self._emb_module.eval()
 
     def _init_memory(self) -> None:
+        self._time_encoder = TimeEncoder(self._node_feature_dim)
+
         # if self._memory_params.message_func == 'identity':
         #     raw_message_dim = self._memory_params.message_dim
         # else:
@@ -93,9 +91,7 @@ class TGN(nn.Module):
         dst_emb = self._emb_module.compute_embedding(batch.dst_ids, batch.timestamps)
         return src_emb, dst_emb
 
-    def compute_temporal_embeddings(
-        self, batch: DataBatch
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def compute_temporal_embeddings(self, batch: DataBatch) -> Tuple[torch.Tensor, torch.Tensor]:
         if self._use_memory:
             return self._compute_temporal_embeddings_with_memory(batch)
         else:
@@ -106,15 +102,15 @@ class TGN(nn.Module):
         score = self._affinity_score(src_emb, dst_emb).squeeze()  # (B,)
         return score.sigmoid()  # (B,)
 
-    def _update_memory(self, nodes: np.ndarray, messages: Dict[int, List[Message]]) -> None:
+    def _update_memory(self, nodes: torch.Tensor, messages: Dict[int, List[Message]]) -> None:
         unique_nodes, unique_messages, unique_ts = self._message_aggregator.aggregate(nodes, messages)
         if len(unique_nodes) > 0:
             unique_messages = self._message_function.compute_message(unique_messages)
         self._memory_updater.update_memory(self._memory, unique_nodes, unique_messages, unique_ts)
 
     def _get_updated_memory(
-        self, nodes: np.ndarray, messages: Dict[int, List[Message]]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self, nodes: torch.Tensor, messages: Dict[int, List[Message]]
+    ) -> MemorySnapshot:
         unique_nodes, unique_messages, unique_ts = self._message_aggregator.aggregate(nodes, messages)
         if len(unique_nodes) > 0:
             unique_messages = self._message_function.compute_message(unique_messages)
@@ -144,6 +140,3 @@ class TGN(nn.Module):
     def set_neighbor_finder(self, neighbor_finder: NeighborFinder) -> None:
         self._neighbor_finder = neighbor_finder
         self._emb_module.set_neighbor_finder(neighbor_finder)
-
-    def _forward_unimplemented(self, *input: Any) -> None:
-        pass

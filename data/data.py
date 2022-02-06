@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 import random
 from abc import abstractmethod
 from dataclasses import dataclass
+from logging import Logger
 from typing import Generator, Set, Tuple
 
 import numpy as np
@@ -22,22 +24,18 @@ class AbsFeatureRepo(object):
     def get_edge_feature(self, edges: np.ndarray) -> np.ndarray:
         raise NotImplementedError
 
-    @property
     @abstractmethod
     def num_nodes(self) -> int:
         raise NotImplementedError
 
-    @property
     @abstractmethod
     def num_edges(self) -> int:
         raise NotImplementedError
 
-    @property
     @abstractmethod
     def node_feature_dim(self) -> int:
         raise NotImplementedError
 
-    @property
     @abstractmethod
     def edge_feature_dim(self) -> int:
         raise NotImplementedError
@@ -55,28 +53,21 @@ class StaticFeatureRepo(AbsFeatureRepo):
         self._node_feature = node_feature
         self._edge_feature = edge_feature
 
-        print(f"Node feature shape: {self._node_feature.shape}")
-        print(f"Edge feature shape: {self._edge_feature.shape}")
-
     def get_node_feature(self, nodes: np.ndarray) -> np.ndarray:
         return self._node_feature[nodes]
 
     def get_edge_feature(self, edges: np.ndarray) -> np.ndarray:
         return self._edge_feature[edges]
 
-    @property
     def num_nodes(self) -> int:
         return self._node_feature.shape[0]
 
-    @property
     def num_edges(self) -> int:
         return self._edge_feature.shape[0]
 
-    @property
     def node_feature_dim(self) -> int:
         return self._node_feature.shape[1]
 
-    @property
     def edge_feature_dim(self) -> int:
         return self._edge_feature.shape[1]
 
@@ -153,8 +144,11 @@ class Dataset:
         select: np.ndarray = np.logical_or(np.isin(self.src_ids, select_nodes), np.isin(self.dst_ids, select_nodes))
         return self._get_subset_by_indicator(name, select)
 
-    def describe(self) -> None:
-        print(f"Dataset {self.name} has {self.n_sample} edges and {self.num_unique_nodes} unique nodes.")
+    def describe(self, logger: Logger) -> None:
+        logger.info(f"Dataset {self.name} has {self.n_sample} edges and {self.num_unique_nodes} unique nodes.")
+
+    def get_batch_num(self, batch_size: int) -> int:
+        return int(math.ceil(self.n_sample / batch_size))
 
     def batch_generator(self, batch_size: int) -> Generator[DataBatch, None, None]:
         start_idx = 0
@@ -172,6 +166,7 @@ class Dataset:
 
 
 def get_self_supervised_data(
+    logger: Logger,
     workspace_path: str,
     different_new_nodes_between_val_and_test: bool = False,
     randomize_features: bool = False,
@@ -218,8 +213,12 @@ def get_self_supervised_data(
     new_node_test_data = test_data.get_subset_by_selecting_nodes('new_node_test_data', test_new_nodes)
 
     # Show descriptions of all datasets
+    logger.info('===== Data statistics =====')
     for data in [full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data]:
-        data.describe()
+        data.describe(logger)
+    logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
+    logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
+    logger.info('')
 
     return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
 

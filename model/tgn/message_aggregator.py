@@ -1,11 +1,10 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
 import torch
 from torch import nn
 
-from module.memory import Message
+from model.tgn.memory import Message
 
 
 class AbsMessageAggregator(nn.Module, metaclass=ABCMeta):
@@ -14,9 +13,9 @@ class AbsMessageAggregator(nn.Module, metaclass=ABCMeta):
 
     @abstractmethod
     def aggregate(
-        self, nodes: np.ndarray,
+        self, nodes: torch.Tensor,
         messages: Dict[int, List[Message]]
-    ) -> Tuple[np.ndarray, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
             nodes: np.ndarray

@@ -3,20 +3,15 @@ from typing import Tuple
 
 import numpy as np
 import torch
-
-from data.data import Dataset
-from model.tgn import TGN
 from sklearn.metrics import average_precision_score, roc_auc_score
 
+from data.data import Dataset
+from model.abs_model import AbsModel
 from utils.training import RandomNodeSelector
 
 
-def evaluate_edge_prediction(
-    model: TGN,
-    data: Dataset,
-    batch_size: int,
-) -> Tuple[float, float]:
-    random_node_selector = RandomNodeSelector(data.dst_ids)
+def evaluate_edge_prediction(model: AbsModel, data: Dataset, batch_size: int, seed: int) -> Tuple[float, float]:
+    random_node_selector = RandomNodeSelector(data.dst_ids, seed=seed)
     val_ap = []
     val_auc = []
     with torch.no_grad():

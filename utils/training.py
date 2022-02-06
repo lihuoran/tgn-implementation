@@ -1,6 +1,21 @@
+import os
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import torch
+from torch import nn
+
+
+def get_model_path(version_path: str, epoch: int) -> str:
+    return os.path.join(version_path, 'saved_models', f'model_{epoch:05d}.ckpt')
+
+
+def save_model(version_path: str, epoch: int, model: nn.Module) -> None:
+    torch.save(model, get_model_path(version_path, epoch))
+
+
+def load_model(version_path: str, epoch: int) -> nn.Module:
+    return torch.load(get_model_path(version_path, epoch))
 
 
 class EarlyStopMonitor(object):
