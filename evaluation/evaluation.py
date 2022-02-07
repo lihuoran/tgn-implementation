@@ -4,6 +4,7 @@ from typing import Tuple
 import numpy as np
 import torch
 from sklearn.metrics import average_precision_score, roc_auc_score
+from tqdm import tqdm
 
 from data.data import Dataset
 from model.abs_model import AbsModel
@@ -15,9 +16,11 @@ def evaluate_edge_prediction(model: AbsModel, data: Dataset, batch_size: int, se
     val_ap = []
     val_auc = []
     with torch.no_grad():
-        for pos_batch in data.batch_generator(batch_size):
+        batch_num = data.get_batch_num(batch_size)
+        batch_generator = data.batch_generator(batch_size)
+        for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Evaluation progress', unit='batch'):
             neg_batch = dataclasses.replace(pos_batch)
-            neg_batch.dst_ids = torch.from_numpy(random_node_selector.sample(neg_batch.size))
+            neg_batch.dst_ids = torch.from_numpy(random_node_selector.sample(neg_batch.size)).long()
             pos_prob = model.compute_edge_probabilities(pos_batch)
             neg_prob = model.compute_edge_probabilities(neg_batch)
 

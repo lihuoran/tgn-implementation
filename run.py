@@ -1,5 +1,6 @@
 import argparse
 import os
+
 import yaml
 
 from workflow.train_self_supervised import run_train_self_supervised

@@ -17,3 +17,25 @@ class AbsMessageFunction(nn.Module, metaclass=ABCMeta):
 
     def _forward_unimplemented(self, *input: Any) -> None:
         pass
+
+
+class MLPMessageFunction(AbsMessageFunction):
+    def __init__(self, raw_message_dim: int, message_dim: int) -> None:
+        super(MLPMessageFunction, self).__init__()
+
+        self._fc = nn.Sequential(
+            nn.Linear(raw_message_dim, raw_message_dim // 2),
+            nn.ReLU(),
+            nn.Linear(raw_message_dim // 2, message_dim)
+        )
+
+    def compute_message(self, raw_message: torch.Tensor) -> torch.Tensor:
+        return self._fc(raw_message)
+
+
+class IdentityMessageFunction(AbsMessageFunction):
+    def __init__(self) -> None:
+        super(IdentityMessageFunction, self).__init__()
+
+    def compute_message(self, raw_message: torch.Tensor) -> torch.Tensor:
+        return raw_message

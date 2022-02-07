@@ -38,11 +38,16 @@ class SequenceMemoryUpdater(AbsMemoryUpdater, metaclass=ABCMeta):
         unique_ts: torch.Tensor,
         update_in_place: bool = True,
     ) -> MemorySnapshot:
-        snapshot = memory.get_snapshot(requires_messages=False)
-        snapshot.memory[unique_nodes] = self._update(unique_messages, snapshot.memory[unique_nodes])
+        if len(unique_nodes) <= 0:
+            return memory.get_snapshot(require_message=False)
+
+        # assert (memory.get_last_update() <= unique_ts).all().item()
+
+        snapshot = memory.get_snapshot(require_message=False)
+        snapshot.memory_tensor[unique_nodes] = self._update(unique_messages, snapshot.memory_tensor[unique_nodes])
         snapshot.last_update[unique_nodes] = unique_ts
         if update_in_place:
-            memory.set_memory(unique_nodes, snapshot.memory[unique_nodes])
+            memory.set_memory(unique_nodes, snapshot.memory_tensor[unique_nodes])
             memory.set_last_update(unique_nodes, snapshot.last_update[unique_nodes])
         return snapshot
 

@@ -1,3 +1,4 @@
+import collections
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -5,17 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 
-
-def get_model_path(version_path: str, epoch: int) -> str:
-    return os.path.join(version_path, 'saved_models', f'model_{epoch:05d}.ckpt')
-
-
-def save_model(version_path: str, epoch: int, model: nn.Module) -> None:
-    torch.save(model, get_model_path(version_path, epoch))
-
-
-def load_model(version_path: str, epoch: int) -> nn.Module:
-    return torch.load(get_model_path(version_path, epoch))
+from data.data import Dataset
 
 
 class EarlyStopMonitor(object):
@@ -101,15 +92,15 @@ class NeighborFinder:
 
     def get_temporal_neighbor(
         self,
-        src_ids: np.ndarray,
+        nodes: np.ndarray,
         timestamps: np.ndarray,
         k: int = 20
-    ) -> List[List[Tuple[float, int, int]]]:
-        assert (len(src_ids) == len(timestamps))
+    ) -> List[List[Tuple[float, int, int]]]:  # (timestamp, edge_id, node_id)
+        assert (len(nodes) == len(timestamps))
         assert k > 0
 
         temporal_neighbor = []
-        for i, (src_id, ts) in enumerate(zip(src_ids, timestamps)):
+        for i, (src_id, ts) in enumerate(zip(nodes, timestamps)):
             neighbors = self._find_before(src_id, ts)
             if len(neighbors) == 0:
                 ngh_list = [(0.0, 0, 0)] * k  # Empty result
@@ -127,3 +118,26 @@ class NeighborFinder:
 
     def reset_random_state(self) -> None:
         self._random_state = np.random.RandomState(self._seed)
+
+
+def get_model_path(version_path: str, epoch: int) -> str:
+    return os.path.join(version_path, 'saved_models', f'model_{epoch:05d}.ckpt')
+
+
+def save_model(version_path: str, epoch: int, model: nn.Module) -> None:
+    torch.save(model, get_model_path(version_path, epoch))
+
+
+def load_model(version_path: str, epoch: int) -> nn.Module:
+    return torch.load(get_model_path(version_path, epoch))
+
+
+def get_neighbor_finder(data: Dataset, uniform: bool) -> NeighborFinder:
+    adj_list: Dict[int, List[Tuple[float, int, int]]] = collections.defaultdict(list)
+
+    data_iter = zip(data.src_ids, data.dst_ids, data.edge_ids, data.timestamps)
+    for src_id, dst_id, edge_id, timestamp in data_iter:
+        adj_list[int(src_id)].append((timestamp, edge_id, dst_id))
+        adj_list[int(dst_id)].append((timestamp, edge_id, src_id))
+
+    return NeighborFinder(adj_list, uniform=uniform)

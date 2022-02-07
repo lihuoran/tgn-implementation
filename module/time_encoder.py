@@ -1,7 +1,7 @@
 from typing import Any
 
-import torch
 import numpy as np
+import torch
 
 
 class TimeEncoder(torch.nn.Module):
