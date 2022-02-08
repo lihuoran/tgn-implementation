@@ -35,11 +35,13 @@ class AbsModel(nn.Module, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def compute_temporal_embeddings(self, batch: DataBatch) -> Tuple[torch.Tensor, torch.Tensor]:
+    def compute_temporal_embeddings(
+        self, batch: DataBatch, fake_batch: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     @abstractmethod
-    def compute_edge_probabilities(self, batch: DataBatch) -> torch.Tensor:
+    def compute_edge_probabilities(self, batch: DataBatch, fake_batch: bool = False) -> torch.Tensor:
         raise NotImplementedError
 
     @abstractmethod

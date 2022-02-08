@@ -36,6 +36,6 @@ def get_model_memory(feature_repo: AbsFeatureRepo, device: torch.device) -> TGN:
             update_memory_at_start=False,
             use_src_emb_in_message=False,
             use_dst_emb_in_message=False,
-        )
+        ),
     )
     return tgn

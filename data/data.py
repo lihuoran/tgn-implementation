@@ -106,6 +106,20 @@ class Dataset:
         self.unique_nodes = set(self.src_ids) | set(self.dst_ids)
 
         self._shape_check()
+        self._time_order_check()
+
+    def show_debug_info(self) -> None:
+        print(self.n_sample)
+        print(self.src_ids[:10])
+        print(self.dst_ids[:10])
+        print(self.timestamps[:10])
+        print(self.edge_ids[:10])
+        print(self.labels[:10])
+        print(self.src_ids[-10:])
+        print(self.dst_ids[-10:])
+        print(self.timestamps[-10:])
+        print(self.edge_ids[-10:])
+        print(self.labels[-10:])
 
     def _shape_check(self) -> None:
         """Check whether all attributes have correct shapes.
@@ -115,6 +129,13 @@ class Dataset:
         assert self.timestamps.shape == (self.n_sample,)
         assert self.edge_ids.shape == (self.n_sample,)
         assert self.labels.shape == (self.n_sample,)
+        print(f'{self.name} shape check passed.')
+
+    def _time_order_check(self) -> None:
+        n = len(self.timestamps)
+        for i in range(n - 1):
+            assert self.timestamps[i] <= self.timestamps[i + 1]
+        print(f'{self.name} time order check passed.')
 
     @property
     def num_unique_nodes(self) -> int:
@@ -123,8 +144,11 @@ class Dataset:
     def _get_subset_by_indicator(self, name: str, select: np.ndarray) -> Dataset:
         return Dataset(
             name,
-            self.src_ids[select], self.dst_ids[select], self.timestamps[select],
-            self.labels[select], self.edge_ids[select],
+            src_ids=self.src_ids[select],
+            dst_ids=self.dst_ids[select],
+            timestamps=self.timestamps[select],
+            edge_ids=self.edge_ids[select],
+            labels=self.labels[select],
         )
 
     def get_subset_by_time_range(self, name: str, lower: float = None, upper: float = None) -> Dataset:
@@ -165,7 +189,7 @@ class Dataset:
             start_idx = end_idx
 
 
-def get_self_supervised_data(
+def get_self_supervised_data_backup(
     logger: Logger,
     workspace_path: str,
     different_new_nodes_between_val_and_test: bool = False,
@@ -220,10 +244,13 @@ def get_self_supervised_data(
     logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
     logger.info('')
 
+    assert train_data.timestamps[-1] < val_data.timestamps[0]
+    assert val_data.timestamps[-1] < test_data.timestamps[0]
+
     return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
 
 
-def get_self_supervised_data_backup(
+def get_self_supervised_data(
     logger: Logger,
     workspace_path: str,
     different_new_nodes_between_val_and_test: bool = False,

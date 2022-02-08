@@ -90,7 +90,7 @@ class GraphEmbedding(AbsEmbeddingModule):
         time_diffs: torch.Tensor = None,
     ) -> torch.Tensor:
         return self._compute_embedding_impl(
-            self._n_layers, nodes, timestamps, memory_tensor,
+            self._n_layers, nodes, timestamps, memory_tensor=memory_tensor,
         )
 
     def _compute_embedding_impl(

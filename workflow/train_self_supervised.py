@@ -32,15 +32,13 @@ def train_single_epoch(
 
     random_node_selector = RandomNodeSelector(data.dst_ids)
     model.epoch_start_step()
-    model.train_mode()
     for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
         # Forward propagation
         neg_batch = dataclasses.replace(pos_batch)
         neg_batch.dst_ids = torch.from_numpy(random_node_selector.sample(neg_batch.size))
 
-        model.train_mode()
-        pos_prob = model.compute_edge_probabilities(pos_batch)
-        neg_prob = model.compute_edge_probabilities(neg_batch)
+        pos_prob = model.compute_edge_probabilities(pos_batch, fake_batch=False)
+        neg_prob = model.compute_edge_probabilities(neg_batch, fake_batch=True)
         with torch.no_grad():
             pos_label = torch.ones(pos_batch.size, dtype=torch.float)
             neg_label = torch.zeros(neg_batch.size, dtype=torch.float)
@@ -57,7 +55,6 @@ def train_single_epoch(
 
             loss = 0
             optimizer.zero_grad()
-
             model.backward_post_step()
     model.epoch_end_step()
 
@@ -133,6 +130,7 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
         if early_stopper.early_stop_check(ap):
             logger.info(f'No improvement over {train_config["early_stop"]} rounds, early stop.')
+            logger.info(f'Best epoch = {early_stopper.best_epoch}')
             break
 
         save_model(version_path=version_path, epoch=epoch, model=model)

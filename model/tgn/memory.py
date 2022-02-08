@@ -35,7 +35,7 @@ class Memory(nn.Module):
         self.reset()
 
     def reset(self) -> None:
-        self._memory = nn.Parameter(
+        self._memory_tensor = nn.Parameter(
             torch.zeros((self._num_nodes, self._memory_dim)), requires_grad=False
         )
         self._last_update = nn.Parameter(
@@ -59,12 +59,12 @@ class Memory(nn.Module):
 
     def get_memory_tensor(self, nodes: torch.Tensor = None) -> torch.Tensor:
         if nodes is None:
-            return self._memory
+            return self._memory_tensor
         else:
-            return self._memory[nodes, :]
+            return self._memory_tensor[nodes, :]
 
     def set_memory_tensor(self, nodes: torch.Tensor, memory_tensor: torch.Tensor) -> None:
-        self._memory[nodes, :] = memory_tensor
+        self._memory_tensor[nodes, :] = memory_tensor
 
     def get_last_update(self, nodes: torch.Tensor = None) -> torch.Tensor:
         if nodes is None:
@@ -77,7 +77,7 @@ class Memory(nn.Module):
 
     def get_snapshot(self, require_message: bool = True) -> MemorySnapshot:
         return MemorySnapshot(
-            memory_tensor=self._memory.data.clone(),
+            memory_tensor=self._memory_tensor.data.clone(),
             last_update=self._last_update.data.clone(),
             messages=None if not require_message else {
                 node_id: [msg.clone() for msg in messages]
@@ -86,7 +86,7 @@ class Memory(nn.Module):
         )
 
     def restore(self, memory_snapshot: MemorySnapshot) -> None:
-        self._memory.data = memory_snapshot.memory_tensor.clone()
+        self._memory_tensor.data = memory_snapshot.memory_tensor.clone()
         self._last_update.data = memory_snapshot.last_update.clone()
         if memory_snapshot.memory_tensor is not None:
             self._messages = {
@@ -95,7 +95,7 @@ class Memory(nn.Module):
             }
 
     def detach(self) -> None:
-        self._memory.detach_()
+        self._memory_tensor.detach_()
         self._last_update.detach_()
         self._messages = {node_id: [msg.detach() for msg in messages] for node_id, messages in self._messages.items()}
 

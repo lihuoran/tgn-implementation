@@ -23,8 +23,8 @@ def evaluate_edge_prediction(
         for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Evaluation progress', unit='batch'):
             neg_batch = dataclasses.replace(pos_batch)
             neg_batch.dst_ids = torch.from_numpy(random_node_selector.sample(neg_batch.size)).long()
-            pos_prob = model.compute_edge_probabilities(pos_batch)
-            neg_prob = model.compute_edge_probabilities(neg_batch)
+            pos_prob = model.compute_edge_probabilities(pos_batch, fake_batch=False)
+            neg_prob = model.compute_edge_probabilities(neg_batch, fake_batch=True)
 
             pred_score = np.concatenate([pos_prob.cpu().numpy(), neg_prob.cpu().numpy()])
             true_label = np.concatenate([np.ones(pos_batch.size), np.zeros(neg_batch.size)])
