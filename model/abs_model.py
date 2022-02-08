@@ -25,6 +25,15 @@ class AbsModel(nn.Module, metaclass=ABCMeta):
     def eval_mode(self) -> None:
         raise NotImplementedError
 
+    def epoch_start_step(self) -> None:
+        pass
+
+    def epoch_end_step(self) -> None:
+        pass
+
+    def backward_post_step(self) -> None:
+        pass
+
     @abstractmethod
     def compute_temporal_embeddings(self, batch: DataBatch) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError

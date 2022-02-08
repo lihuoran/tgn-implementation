@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 import torch
+from torch.optim import Optimizer
 from tqdm import tqdm
 
 from data.data import Dataset, get_self_supervised_data
@@ -12,12 +13,13 @@ from evaluation.evaluation import evaluate_edge_prediction
 from model.abs_model import AbsModel
 from utils.log import make_logger
 from utils.path import get_module
-from utils.training import get_neighbor_finder, RandomNodeSelector
+from utils.training import EarlyStopMonitor, get_neighbor_finder, RandomNodeSelector, save_model
 
 
-def train_single_epoch(model: AbsModel, data: Dataset, batch_size: int, backprop_every: int, lr: float) -> float:
+def train_single_epoch(
+    model: AbsModel, data: Dataset, batch_size: int, backprop_every: int, device: torch.device, optimizer: Optimizer
+) -> float:
     criterion = torch.nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     iter_cnt = 0
     sample_cnt = 0
@@ -26,9 +28,10 @@ def train_single_epoch(model: AbsModel, data: Dataset, batch_size: int, backprop
     loss_records = []
 
     batch_num = data.get_batch_num(batch_size)
-    batch_generator = data.batch_generator(batch_size)
+    batch_generator = data.batch_generator(batch_size, device)
 
     random_node_selector = RandomNodeSelector(data.dst_ids)
+    model.epoch_start_step()
     model.train_mode()
     for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
         # Forward propagation
@@ -55,7 +58,10 @@ def train_single_epoch(model: AbsModel, data: Dataset, batch_size: int, backprop
             loss = 0
             optimizer.zero_grad()
 
-    return np.mean(loss_records)
+            model.backward_post_step()
+    model.epoch_end_step()
+
+    return float(np.mean(loss_records))
 
 
 def prepare_workspace(version_path: str) -> None:
@@ -110,20 +116,26 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
     assert isinstance(model, AbsModel)
 
     num_epoch = train_config['num_epoch']
+    early_stopper = EarlyStopMonitor(max_round=train_config['early_stop'])
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     for epoch in range(1, num_epoch + 1):
         logger.info(f'===== Start epoch {epoch} =====')
         logger.info(f'Run backprop every {backprop_every} {"iteration" if backprop_every == 1 else "iterations"}.')
         epoch_start_time = time.time()
 
         model.set_neighbor_finder(train_neighbor_finder)
-        train_loss = train_single_epoch(model, train_data, train_batch_size, backprop_every, lr)
-        logger.info(f'Training finished. Training loss = {train_loss:.6f}')
+        train_loss = train_single_epoch(model, train_data, train_batch_size, backprop_every, device, optimizer)
+        logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
         model.set_neighbor_finder(full_neighbor_finder)
-        ap, auc = evaluate_edge_prediction(model, val_data, eval_batch_size, seed=evaluation_seed)
+        ap, auc = evaluate_edge_prediction(model, val_data, eval_batch_size, evaluation_seed, device)
         logger.info(f'Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')
 
-        # save_model(version_path=version_path, epoch=epoch, model=model)
+        if early_stopper.early_stop_check(ap):
+            logger.info(f'No improvement over {train_config["early_stop"]} rounds, early stop.')
+            break
+
+        save_model(version_path=version_path, epoch=epoch, model=model)
 
         epoch_end_time = time.time()
         logger.info(f'=== Epoch {epoch} finished in {epoch_end_time - epoch_start_time:.2f} seconds.')

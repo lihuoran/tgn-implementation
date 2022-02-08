@@ -11,13 +11,15 @@ from model.abs_model import AbsModel
 from utils.training import RandomNodeSelector
 
 
-def evaluate_edge_prediction(model: AbsModel, data: Dataset, batch_size: int, seed: int) -> Tuple[float, float]:
+def evaluate_edge_prediction(
+    model: AbsModel, data: Dataset, batch_size: int, seed: int, device: torch.device
+) -> Tuple[float, float]:
     random_node_selector = RandomNodeSelector(data.dst_ids, seed=seed)
     val_ap = []
     val_auc = []
     with torch.no_grad():
         batch_num = data.get_batch_num(batch_size)
-        batch_generator = data.batch_generator(batch_size)
+        batch_generator = data.batch_generator(batch_size, device)
         for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Evaluation progress', unit='batch'):
             neg_batch = dataclasses.replace(pos_batch)
             neg_batch.dst_ids = torch.from_numpy(random_node_selector.sample(neg_batch.size)).long()

@@ -19,7 +19,6 @@ from utils.training import NeighborFinder
 @dataclass
 class MemoryParams:
     memory_dim: int
-    message_dim: int
 
     message_function: AbsMessageFunction
     message_aggregator: AbsMessageAggregator
@@ -74,6 +73,14 @@ class TGN(AbsModel):
         self.eval()
         self._emb_module.eval()
 
+    def epoch_start_step(self) -> None:
+        if self._use_memory:
+            self._memory.reset()
+
+    def backward_post_step(self) -> None:
+        if self._use_memory:
+            self._memory.detach()
+
     def set_neighbor_finder(self, neighbor_finder: NeighborFinder) -> None:
         self._emb_module.set_neighbor_finder(neighbor_finder)
 
@@ -89,8 +96,7 @@ class TGN(AbsModel):
     def _compute_temporal_embeddings_with_memory(self, batch: DataBatch) -> Tuple[torch.Tensor, torch.Tensor]:
         all_nodes = torch.arange(self._feature_repo.num_nodes()).long()
         if self._memory_params.update_memory_at_start:
-            snapshot = self._get_updated_memory(all_nodes, self._memory.get_messages(), update_in_place=False)
-            memory_tensor, last_update = snapshot.memory_tensor, snapshot.last_update
+            memory_tensor, last_update = self._get_updated_memory(all_nodes, self._memory.get_messages())
         else:
             memory_tensor = self._memory.get_memory_tensor(all_nodes)
             last_update = self._memory.get_last_update(all_nodes)
@@ -113,8 +119,8 @@ class TGN(AbsModel):
         )
 
         if self._memory_params.update_memory_at_start:
-            self._get_updated_memory(batch.src_ids, self._memory.get_messages(), update_in_place=True)
-            self._get_updated_memory(batch.dst_ids, self._memory.get_messages(), update_in_place=True)
+            self._update_memory(batch.src_ids, self._memory.get_messages())
+            self._update_memory(batch.dst_ids, self._memory.get_messages())
             assert torch.allclose(memory_tensor[batch.src_ids], self._memory.get_memory_tensor(batch.src_ids))
             assert torch.allclose(memory_tensor[batch.dst_ids], self._memory.get_memory_tensor(batch.dst_ids))
             self._memory.clear_messages(batch.src_ids)
@@ -126,8 +132,8 @@ class TGN(AbsModel):
             self._memory.store_messages(src_messages)
             self._memory.store_messages(dst_messages)
         else:
-            self._get_updated_memory(torch.Tensor(list(src_messages.keys())).long(), src_messages, update_in_place=True)
-            self._get_updated_memory(torch.Tensor(list(dst_messages.keys())).long(), dst_messages, update_in_place=True)
+            self._update_memory(torch.Tensor(list(src_messages.keys())).long(), src_messages)
+            self._update_memory(torch.Tensor(list(dst_messages.keys())).long(), dst_messages)
 
         # if self.dyrep: ...  # TODO
         return src_emb, dst_emb
@@ -148,16 +154,23 @@ class TGN(AbsModel):
         score = self._affinity_score(src_emb, dst_emb).squeeze()  # (B,)
         return score.sigmoid()  # (B,)
 
-    def _get_updated_memory(
-        self, nodes: torch.Tensor, messages: Dict[int, List[Message]], update_in_place: bool = True
-    ) -> MemorySnapshot:
+    def _update_memory(
+        self, nodes: torch.Tensor, messages: Dict[int, List[Message]]
+    ) -> None:
         unique_nodes, unique_messages, unique_ts = self._message_aggregator.aggregate(nodes, messages)
         if len(unique_nodes) > 0:
             unique_messages = self._message_function.compute_message(unique_messages)
 
-        return self._memory_updater.get_updated_memory(
-            self._memory, unique_nodes, unique_messages, unique_ts, update_in_place
-        )
+        self._memory_updater.update_memory(self._memory, unique_nodes, unique_messages, unique_ts)
+
+    def _get_updated_memory(
+        self, nodes: torch.Tensor, messages: Dict[int, List[Message]]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        unique_nodes, unique_messages, unique_ts = self._message_aggregator.aggregate(nodes, messages)
+        if len(unique_nodes) > 0:
+            unique_messages = self._message_function.compute_message(unique_messages)
+
+        return self._memory_updater.get_updated_memory(self._memory, unique_nodes, unique_messages, unique_ts)
 
     def _get_raw_message(
         self, batch: DataBatch, src_emb: torch.Tensor, dst_emb: torch.Tensor, reverse: bool
@@ -180,11 +193,7 @@ class TGN(AbsModel):
         src_message = torch.cat([src_memory, dst_memory, edge_feat, src_time_delta_encoding], dim=1)
 
         messages: Dict[int, List[Message]] = defaultdict(list)
-        for src_id, message, t in zip(src_ids, src_message, ts):
-            messages[src_id].append(Message(t, message))
+        for i in range(len(src_ids)):
+            messages[int(src_ids[i])].append(Message(ts[i], src_message[i]))
 
         return messages
-    #
-    # def set_neighbor_finder(self, neighbor_finder: NeighborFinder) -> None:
-    #     self._neighbor_finder = neighbor_finder
-    #     self._emb_module.set_neighbor_finder(neighbor_finder)

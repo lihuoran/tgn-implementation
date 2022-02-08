@@ -1,6 +1,7 @@
 import argparse
 import os
 
+import torch.autograd
 import yaml
 
 from workflow.train_self_supervised import run_train_self_supervised
@@ -23,4 +24,5 @@ def main(args: argparse.Namespace) -> None:
 
 
 if __name__ == '__main__':
+    torch.autograd.set_detect_anomaly(True)  # TODO: test only
     main(get_args())

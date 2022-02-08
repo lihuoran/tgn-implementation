@@ -27,6 +27,10 @@ class EarlyStopMonitor(object):
         self._higher_better = higher_better
         self._tolerance = tolerance
 
+    @property
+    def best_epoch(self) -> int:
+        return self._best_epoch
+
     def early_stop_check(self, curr_val: float) -> bool:
         if not self._higher_better:
             curr_val *= -1

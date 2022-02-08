@@ -15,6 +15,10 @@ class AbsMessageFunction(nn.Module, metaclass=ABCMeta):
     def compute_message(self, raw_message: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
+    @abstractmethod
+    def message_dim(self) -> int:
+        raise NotImplementedError
+
     def _forward_unimplemented(self, *input: Any) -> None:
         pass
 
@@ -23,6 +27,7 @@ class MLPMessageFunction(AbsMessageFunction):
     def __init__(self, raw_message_dim: int, message_dim: int) -> None:
         super(MLPMessageFunction, self).__init__()
 
+        self._message_dim = message_dim
         self._fc = nn.Sequential(
             nn.Linear(raw_message_dim, raw_message_dim // 2),
             nn.ReLU(),
@@ -32,10 +37,17 @@ class MLPMessageFunction(AbsMessageFunction):
     def compute_message(self, raw_message: torch.Tensor) -> torch.Tensor:
         return self._fc(raw_message)
 
+    def message_dim(self) -> int:
+        return self._message_dim
+
 
 class IdentityMessageFunction(AbsMessageFunction):
-    def __init__(self) -> None:
+    def __init__(self, raw_message_dim: int) -> None:
         super(IdentityMessageFunction, self).__init__()
+        self._raw_message_dim = raw_message_dim
 
     def compute_message(self, raw_message: torch.Tensor) -> torch.Tensor:
         return raw_message
+
+    def message_dim(self) -> int:
+        return self._raw_message_dim

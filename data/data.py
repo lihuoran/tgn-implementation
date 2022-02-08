@@ -150,16 +150,16 @@ class Dataset:
     def get_batch_num(self, batch_size: int) -> int:
         return int(math.ceil(self.n_sample / batch_size))
 
-    def batch_generator(self, batch_size: int) -> Generator[DataBatch, None, None]:
+    def batch_generator(self, batch_size: int, device: torch.device) -> Generator[DataBatch, None, None]:
         start_idx = 0
         while start_idx < self.n_sample:
             end_idx = min(self.n_sample, start_idx + batch_size)
             batch = DataBatch(
-                src_ids=torch.from_numpy(self.src_ids[start_idx:end_idx]).long(),
-                dst_ids=torch.from_numpy(self.dst_ids[start_idx:end_idx]).long(),
-                timestamps=torch.from_numpy(self.timestamps[start_idx:end_idx]).float(),
-                edge_ids=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long(),
-                labels=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long(),
+                src_ids=torch.from_numpy(self.src_ids[start_idx:end_idx]).long().to(device),
+                dst_ids=torch.from_numpy(self.dst_ids[start_idx:end_idx]).long().to(device),
+                timestamps=torch.from_numpy(self.timestamps[start_idx:end_idx]).float().to(device),
+                edge_ids=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long().to(device),
+                labels=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long().to(device),
             )
             yield batch
             start_idx = end_idx
@@ -223,5 +223,60 @@ def get_self_supervised_data(
     return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
 
 
-if __name__ == '__main__':
-    get_self_supervised_data('C:/workspace/tgn-workspace', different_new_nodes_between_val_and_test=False)
+def get_self_supervised_data_backup(
+    logger: Logger,
+    workspace_path: str,
+    different_new_nodes_between_val_and_test: bool = False,
+    randomize_features: bool = False,
+) -> Tuple[Dataset, Dataset, Dataset, Dataset, Dataset, Dataset, AbsFeatureRepo]:
+    # Load data from files
+    graph_df = pd.read_csv(f'{workspace_path}/data/graph.csv')
+    edge_feature = np.load(f'{workspace_path}/data/edge_feature.npy')
+    node_feature = np.load(f'{workspace_path}/data/node_feature.npy')
+    if randomize_features:
+        node_feature = np.random.rand(*node_feature.shape)
+
+    # Create full data
+    full_data = Dataset(
+        name='full_data',
+        src_ids=graph_df.u.values, dst_ids=graph_df.i.values, timestamps=graph_df.ts.values,
+        labels=graph_df.label.values, edge_ids=graph_df.idx.values,
+    )
+    feature_repo = StaticFeatureRepo(node_feature=node_feature, edge_feature=edge_feature)
+
+    # Create validation data & testing data
+    val_time, test_time = list(np.quantile(full_data.timestamps, [0.70, 0.85]))
+    val_data = full_data.get_subset_by_time_range('val_data', lower=val_time + 1e-5, upper=test_time + 1e-5)
+    test_data = full_data.get_subset_by_time_range('test_data', lower=test_time + 1e-5)
+
+    # Sample new nodes
+    random.seed(2020)
+    val_and_test_nodes = set(val_data.src_ids) | set(val_data.dst_ids) | set(test_data.src_ids) | set(test_data.dst_ids)
+    new_val_and_test_nodes = set(random.sample(sorted(list(val_and_test_nodes)), int(0.1 * full_data.num_unique_nodes)))
+
+    # Create training data
+    train_data = full_data.get_subset_by_removing_nodes('', new_val_and_test_nodes)\
+        .get_subset_by_time_range('train_data', upper=val_time + 1e-5)
+    assert len(train_data.unique_nodes & new_val_and_test_nodes) == 0
+
+    # Create pure new node data
+    if different_new_nodes_between_val_and_test:
+        node_list = list(new_val_and_test_nodes)
+        n = len(node_list) // 2
+        val_new_nodes = set(node_list[:n])
+        test_new_nodes = set(node_list[n:])
+    else:
+        # val_new_nodes = test_new_nodes = new_val_and_test_nodes
+        val_new_nodes = test_new_nodes = full_data.unique_nodes - train_data.unique_nodes
+    new_node_val_data = val_data.get_subset_by_selecting_nodes('new_node_val_data', val_new_nodes)
+    new_node_test_data = test_data.get_subset_by_selecting_nodes('new_node_test_data', test_new_nodes)
+
+    # Show descriptions of all datasets
+    logger.info('===== Data statistics =====')
+    for data in [full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data]:
+        data.describe(logger)
+    logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
+    logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
+    logger.info('')
+
+    return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo

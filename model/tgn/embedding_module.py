@@ -100,7 +100,7 @@ class GraphEmbedding(AbsEmbeddingModule):
         timestamps: torch.Tensor,  # (B,)
         memory_tensor: torch.Tensor = None,  # (B, node_feat_dim)
     ) -> torch.Tensor:  # (B, node_feat_dim)
-        node_time_emb = self._time_encoder(torch.zeros_like(timestamps)).unsqueeze(1)  # (B, 1, node_feat_dim)
+        node_time_emb = self._time_encoder(torch.zeros_like(timestamps).unsqueeze(1))  # (B, 1, node_feat_dim)
         node_features = torch.from_numpy(  # (B, node_feat_dim)
             self._feature_repo.get_node_feature(nodes.detach().numpy())
         ).float().to(self._device)
@@ -191,6 +191,8 @@ class GraphAttentionEmbedding(GraphEmbedding):
         edge_features: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
-        return self._attention_models[layer_id - 1](
+        attention_model = self._attention_models[layer_id - 1]
+        output, weight = attention_model(
             node_features, node_time_emb, neighbor_emb, edge_time_emb, edge_features, mask
-        )[0]
+        )
+        return output

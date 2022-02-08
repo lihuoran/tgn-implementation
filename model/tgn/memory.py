@@ -32,7 +32,9 @@ class Memory(nn.Module):
         super(Memory, self).__init__()
         self._num_nodes = num_nodes
         self._memory_dim = memory_dim
+        self.reset()
 
+    def reset(self) -> None:
         self._memory = nn.Parameter(
             torch.zeros((self._num_nodes, self._memory_dim)), requires_grad=False
         )
@@ -55,11 +57,14 @@ class Memory(nn.Module):
         for node_id in nodes.long().detach().numpy():
             self._messages[node_id].clear()
 
-    def get_memory_tensor(self, nodes: torch.Tensor) -> torch.Tensor:
-        return self._memory[nodes]
+    def get_memory_tensor(self, nodes: torch.Tensor = None) -> torch.Tensor:
+        if nodes is None:
+            return self._memory
+        else:
+            return self._memory[nodes, :]
 
-    def set_memory(self, nodes: torch.Tensor, memory_tensor: torch.Tensor) -> None:
-        self._memory[nodes] = memory_tensor
+    def set_memory_tensor(self, nodes: torch.Tensor, memory_tensor: torch.Tensor) -> None:
+        self._memory[nodes, :] = memory_tensor
 
     def get_last_update(self, nodes: torch.Tensor = None) -> torch.Tensor:
         if nodes is None:
@@ -72,8 +77,8 @@ class Memory(nn.Module):
 
     def get_snapshot(self, require_message: bool = True) -> MemorySnapshot:
         return MemorySnapshot(
-            memory_tensor=self._memory.clone(),
-            last_update=self._last_update.clone(),
+            memory_tensor=self._memory.data.clone(),
+            last_update=self._last_update.data.clone(),
             messages=None if not require_message else {
                 node_id: [msg.clone() for msg in messages]
                 for node_id, messages in self._messages.items()
@@ -81,8 +86,8 @@ class Memory(nn.Module):
         )
 
     def restore(self, memory_snapshot: MemorySnapshot) -> None:
-        self._memory = memory_snapshot.memory_tensor.clone()
-        self._last_update = memory_snapshot.last_update.clone()
+        self._memory.data = memory_snapshot.memory_tensor.clone()
+        self._last_update.data = memory_snapshot.last_update.clone()
         if memory_snapshot.memory_tensor is not None:
             self._messages = {
                 node_id: [msg.clone() for msg in messages]

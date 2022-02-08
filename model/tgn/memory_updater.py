@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any
+from typing import Any, Tuple
 
 import torch
 from torch import nn
@@ -12,14 +12,23 @@ class AbsMemoryUpdater(nn.Module, metaclass=ABCMeta):
         super(AbsMemoryUpdater, self).__init__()
 
     @abstractmethod
+    def update_memory(
+        self,
+        memory: Memory,
+        unique_nodes: torch.Tensor,
+        unique_messages: torch.Tensor,
+        unique_ts: torch.Tensor,
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_updated_memory(
         self,
         memory: Memory,
         unique_nodes: torch.Tensor,
         unique_messages: torch.Tensor,
         unique_ts: torch.Tensor,
-        update_in_place: bool = True,
-    ) -> MemorySnapshot:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     def _forward_unimplemented(self, *input: Any) -> None:
@@ -30,26 +39,37 @@ class SequenceMemoryUpdater(AbsMemoryUpdater, metaclass=ABCMeta):
     def __init__(self):
         super(SequenceMemoryUpdater, self).__init__()
 
+    def update_memory(
+        self,
+        memory: Memory,
+        unique_nodes: torch.Tensor,
+        unique_messages: torch.Tensor,
+        unique_ts: torch.Tensor,
+    ) -> None:
+        if len(unique_nodes) <= 0:  # TODO: debug
+            return
+
+        memory_tensor = memory.get_memory_tensor(unique_nodes)
+        memory.set_last_update(unique_nodes, unique_ts)
+
+        updated_memory_tensor = self._update(unique_messages, memory_tensor)
+        memory.set_memory_tensor(unique_nodes, updated_memory_tensor)
+
     def get_updated_memory(
         self,
         memory: Memory,
         unique_nodes: torch.Tensor,
         unique_messages: torch.Tensor,
         unique_ts: torch.Tensor,
-        update_in_place: bool = True,
-    ) -> MemorySnapshot:
-        if len(unique_nodes) <= 0:
-            return memory.get_snapshot(require_message=False)
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        updated_memory_tensor = memory.get_memory_tensor().data.clone()
+        updated_last_update = memory.get_last_update().data.clone()
 
-        # assert (memory.get_last_update() <= unique_ts).all().item()
+        if len(unique_nodes) > 0:
+            updated_memory_tensor[unique_nodes] = self._update(unique_messages, updated_memory_tensor[unique_nodes])
+            updated_last_update[unique_nodes] = unique_ts
 
-        snapshot = memory.get_snapshot(require_message=False)
-        snapshot.memory_tensor[unique_nodes] = self._update(unique_messages, snapshot.memory_tensor[unique_nodes])
-        snapshot.last_update[unique_nodes] = unique_ts
-        if update_in_place:
-            memory.set_memory(unique_nodes, snapshot.memory_tensor[unique_nodes])
-            memory.set_last_update(unique_nodes, snapshot.last_update[unique_nodes])
-        return snapshot
+        return updated_memory_tensor, updated_last_update
 
     @abstractmethod
     def _update(self, unique_messages: torch.Tensor, memory_tensor: torch.Tensor) -> torch.Tensor:
