@@ -79,6 +79,7 @@ class DataBatch:
     timestamps: torch.Tensor
     edge_ids: torch.Tensor
     labels: torch.Tensor
+    neg_ids: torch.Tensor = None
 
     @property
     def size(self) -> int:
@@ -90,6 +91,8 @@ class DataBatch:
         self.timestamps.to(device)
         self.edge_ids.to(device)
         self.labels.to(device)
+        if self.neg_ids is not None:
+            self.neg_ids.to(device)
 
 
 @dataclass

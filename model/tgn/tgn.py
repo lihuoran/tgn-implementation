@@ -1,13 +1,13 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
 from data.data import AbsFeatureRepo, DataBatch
-from model.abs_model import AbsModel
+from model.abs_model import AbsModel, EmbeddingBundle
 from model.tgn.embedding_module import AbsEmbeddingModule
-from model.tgn.memory import Memory, MemorySnapshot, Message
+from model.tgn.memory import Memory, Message
 from model.tgn.memory_updater import AbsMemoryUpdater
 from model.tgn.message_aggregator import AbsMessageAggregator
 from model.tgn.message_function import AbsMessageFunction
@@ -95,71 +95,90 @@ class TGN(AbsModel):
         self._message_aggregator = self._memory_params.message_aggregator
         self._memory_updater = self._memory_params.memory_updater
 
-    def _compute_temporal_embeddings_with_memory(
-        self, batch: DataBatch, fake_batch: bool
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _compute_temporal_embeddings_with_memory(self, batch: DataBatch) -> EmbeddingBundle:
         all_nodes = torch.arange(self._num_nodes).long()
-        if self._memory_params.update_memory_at_start:  # TODO: how about not fake?
+        if self._memory_params.update_memory_at_start:
             memory_tensor, last_update = self._get_updated_memory(all_nodes, self._memory.get_messages())
         else:
             memory_tensor = self._memory.get_memory_tensor()
             last_update = self._memory.get_last_update()
 
-        src_emb = self._emb_module.compute_embedding(
-            nodes=batch.src_ids, timestamps=batch.timestamps, memory_tensor=memory_tensor,
-            time_diffs=_normalize(
-                data=batch.timestamps - last_update[batch.src_ids],
-                mean=self._memory_params.src_time_shift_mean,
-                std=self._memory_params.src_time_shift_std,
-            ),
+        src_time_diffs = _normalize(
+            data=batch.timestamps - last_update[batch.src_ids],
+            mean=self._memory_params.src_time_shift_mean,
+            std=self._memory_params.src_time_shift_std,
         )
-        dst_emb = self._emb_module.compute_embedding(
-            nodes=batch.dst_ids, timestamps=batch.timestamps, memory_tensor=memory_tensor,
-            time_diffs=_normalize(
-                data=batch.timestamps - last_update[batch.dst_ids],
+        dst_time_diffs = _normalize(
+            data=batch.timestamps - last_update[batch.dst_ids],
+            mean=self._memory_params.dst_time_shift_mean,
+            std=self._memory_params.dst_time_shift_std,
+        )
+        if batch.neg_ids is not None:
+            neg_time_diffs = _normalize(
+                data=batch.timestamps - last_update[batch.neg_ids],
                 mean=self._memory_params.dst_time_shift_mean,
                 std=self._memory_params.dst_time_shift_std,
-            ),
-        )
+            )
+            src_emb, dst_emb, neg_emb = self._compute_temporal_embeddings(
+                batch=batch, memory_tensor=memory_tensor, time_diffs=[src_time_diffs, dst_time_diffs, neg_time_diffs]
+            )
+        else:
+            src_emb, dst_emb, neg_emb = self._compute_temporal_embeddings(
+                batch=batch, memory_tensor=memory_tensor, time_diffs=[src_time_diffs, dst_time_diffs]
+            )
 
-        if not fake_batch:
-            if self._memory_params.update_memory_at_start:
-                self._update_memory(batch.src_ids, self._memory.get_messages())
-                self._update_memory(batch.dst_ids, self._memory.get_messages())
-                assert torch.allclose(memory_tensor[batch.src_ids], self._memory.get_memory_tensor(batch.src_ids))
-                assert torch.allclose(memory_tensor[batch.dst_ids], self._memory.get_memory_tensor(batch.dst_ids))
-                self._memory.clear_messages(batch.src_ids)
-                self._memory.clear_messages(batch.dst_ids)
+        if self._memory_params.update_memory_at_start:
+            self._update_memory(batch.src_ids, self._memory.get_messages())
+            self._update_memory(batch.dst_ids, self._memory.get_messages())
+            assert torch.allclose(memory_tensor[batch.src_ids], self._memory.get_memory_tensor(batch.src_ids))
+            assert torch.allclose(memory_tensor[batch.dst_ids], self._memory.get_memory_tensor(batch.dst_ids))
+            self._memory.clear_messages(batch.src_ids)
+            self._memory.clear_messages(batch.dst_ids)
 
-            src_messages = self._get_raw_message(batch, src_emb, dst_emb, reverse=False)
-            dst_messages = self._get_raw_message(batch, src_emb, dst_emb, reverse=True)
-            if self._memory_params.update_memory_at_start:
-                self._memory.store_messages(src_messages)
-                self._memory.store_messages(dst_messages)
-            else:
-                self._update_memory(torch.Tensor(list(src_messages.keys())).long(), src_messages)
-                self._update_memory(torch.Tensor(list(dst_messages.keys())).long(), dst_messages)
+        src_messages = self._get_raw_message(batch, src_emb, dst_emb, reverse=False)
+        dst_messages = self._get_raw_message(batch, src_emb, dst_emb, reverse=True)
+        if self._memory_params.update_memory_at_start:
+            self._memory.store_messages(src_messages)
+            self._memory.store_messages(dst_messages)
+        else:
+            self._update_memory(torch.Tensor(list(src_messages.keys())).long(), src_messages)
+            self._update_memory(torch.Tensor(list(dst_messages.keys())).long(), dst_messages)
 
         # if self.dyrep: ...  # TODO
-        return src_emb, dst_emb
+        return src_emb, dst_emb, neg_emb
 
-    def _compute_temporal_embeddings_without_memory(self, batch: DataBatch) -> Tuple[torch.Tensor, torch.Tensor]:
-        src_emb = self._emb_module.compute_embedding(batch.src_ids, batch.timestamps)
-        dst_emb = self._emb_module.compute_embedding(batch.dst_ids, batch.timestamps)
-        return src_emb, dst_emb
-
-    def compute_temporal_embeddings(
-        self, batch: DataBatch, fake_batch: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if self._use_memory:
-            return self._compute_temporal_embeddings_with_memory(batch, fake_batch)
+    def _compute_temporal_embeddings(
+        self, batch: DataBatch, memory_tensor: torch.Tensor = None, time_diffs: List[torch.Tensor] = None
+    ) -> EmbeddingBundle:
+        batch_size = batch.size
+        if batch.neg_ids is not None:
+            tot_ids = torch.cat([batch.src_ids, batch.dst_ids, batch.neg_ids])
+            tot_ts = torch.cat([batch.timestamps, batch.timestamps, batch.timestamps])
+            tot_time_diff = None if time_diffs is None else torch.cat(time_diffs)
+            tot_emb = self._emb_module.compute_embedding(
+                nodes=tot_ids, timestamps=tot_ts, memory_tensor=memory_tensor, time_diffs=tot_time_diff
+            )
+            return tot_emb[:batch_size, :], tot_emb[batch_size:batch_size * 2, :], tot_emb[batch_size * 2:, :]
         else:
-            return self._compute_temporal_embeddings_without_memory(batch)
+            tot_ids = torch.cat([batch.src_ids, batch.dst_ids])
+            tot_ts = torch.cat([batch.timestamps, batch.timestamps])
+            tot_time_diff = None if time_diffs is None else torch.cat(time_diffs)
+            tot_emb = self._emb_module.compute_embedding(
+                nodes=tot_ids, timestamps=tot_ts, memory_tensor=memory_tensor, time_diffs=tot_time_diff
+            )
+            return tot_emb[:batch_size, :], tot_emb[batch_size:, :], None
 
-    def compute_edge_probabilities(self, batch: DataBatch, fake_batch: bool = False) -> torch.Tensor:
-        src_emb, dst_emb = self.compute_temporal_embeddings(batch, fake_batch)  # (B, emb_dim), (B, emb_dim)
-        score = self._affinity_score(src_emb, dst_emb).squeeze()  # (B,)
-        return score.sigmoid()  # (B,)
+    def compute_temporal_embeddings(self, batch: DataBatch) -> EmbeddingBundle:
+        if self._use_memory:
+            return self._compute_temporal_embeddings_with_memory(batch)
+        else:
+            return self._compute_temporal_embeddings(batch)
+
+    def compute_edge_probabilities(self, batch: DataBatch) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        src_emb, dst_emb, neg_emb = self.compute_temporal_embeddings(batch)  # (B, emb_dim), (B, emb_dim), (B, emb_dim)
+        pos_score = self._affinity_score(src_emb, dst_emb).squeeze()  # (B,)
+        neg_score = None if neg_emb is None else self._affinity_score(src_emb, neg_emb).squeeze()  # (B,)
+        return pos_score.sigmoid(), None if neg_score is None else neg_score.sigmoid()  # (B,), (B,)
 
     def _aggregate_and_compute_message(
         self, nodes: torch.Tensor, messages: Dict[int, List[Message]]

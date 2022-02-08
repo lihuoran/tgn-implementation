@@ -1,11 +1,14 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
 
 import torch
 from torch import nn
 
 from data.data import AbsFeatureRepo, DataBatch
 from utils.training import NeighborFinder
+
+
+EmbeddingBundle = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
 
 
 class AbsModel(nn.Module, metaclass=ABCMeta):
@@ -35,13 +38,11 @@ class AbsModel(nn.Module, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def compute_temporal_embeddings(
-        self, batch: DataBatch, fake_batch: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def compute_temporal_embeddings(self, batch: DataBatch) -> EmbeddingBundle:
         raise NotImplementedError
 
     @abstractmethod
-    def compute_edge_probabilities(self, batch: DataBatch, fake_batch: bool = False) -> torch.Tensor:
+    def compute_edge_probabilities(self, batch: DataBatch) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         raise NotImplementedError
 
     @abstractmethod

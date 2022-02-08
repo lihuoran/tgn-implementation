@@ -46,7 +46,7 @@ class SequenceMemoryUpdater(AbsMemoryUpdater, metaclass=ABCMeta):
         unique_messages: torch.Tensor,
         unique_ts: torch.Tensor,
     ) -> None:
-        if len(unique_nodes) <= 0:  # TODO: debug
+        if len(unique_nodes) <= 0:
             return
 
         memory_tensor = memory.get_memory_tensor(unique_nodes)

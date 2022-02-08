@@ -1,6 +1,7 @@
 import argparse
-import dataclasses
 import os
+import pathlib
+import shutil
 import time
 
 import numpy as np
@@ -13,7 +14,7 @@ from evaluation.evaluation import evaluate_edge_prediction
 from model.abs_model import AbsModel
 from utils.log import make_logger
 from utils.path import get_module
-from utils.training import EarlyStopMonitor, get_neighbor_finder, RandomNodeSelector, save_model
+from utils.training import EarlyStopMonitor, RandomNodeSelector, get_neighbor_finder, save_model
 
 
 def train_single_epoch(
@@ -34,14 +35,12 @@ def train_single_epoch(
     model.epoch_start_step()
     for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
         # Forward propagation
-        neg_batch = dataclasses.replace(pos_batch)
-        neg_batch.dst_ids = torch.from_numpy(random_node_selector.sample(neg_batch.size))
-
-        pos_prob = model.compute_edge_probabilities(pos_batch, fake_batch=False)
-        neg_prob = model.compute_edge_probabilities(neg_batch, fake_batch=True)
+        batch_size = pos_batch.size
+        pos_batch.neg_ids = torch.from_numpy(random_node_selector.sample(batch_size)).long()
+        pos_prob, neg_prob = model.compute_edge_probabilities(pos_batch)
         with torch.no_grad():
-            pos_label = torch.ones(pos_batch.size, dtype=torch.float)
-            neg_label = torch.zeros(neg_batch.size, dtype=torch.float)
+            pos_label = torch.ones(batch_size, dtype=torch.float)
+            neg_label = torch.zeros(batch_size, dtype=torch.float)
         loss += criterion(pos_prob.squeeze(), pos_label) + criterion(neg_prob.squeeze(), neg_label)
 
         sample_cnt += pos_batch.size
@@ -69,9 +68,9 @@ def prepare_workspace(version_path: str) -> None:
     os.mkdir(os.path.join(version_path, 'saved_models'))
 
     # Backup code
-    # current_path = os.path.abspath(pathlib.Path())
-    # backup_path = os.path.join(version_path, '_code_backup')
-    # shutil.copytree(current_path, backup_path)
+    current_path = os.path.abspath(pathlib.Path())
+    backup_path = os.path.join(version_path, '_code_backup')
+    shutil.copytree(current_path, backup_path)
 
 
 def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
