@@ -9,9 +9,9 @@ import torch
 from torch.optim import Optimizer
 from tqdm import tqdm
 
-from data import Dataset, get_self_supervised_data
+from data import Dataset, get_data
 from evaluation import evaluate_edge_prediction
-from model import AbsModel
+from model import AbsEmbeddingModel
 from utils import (
     EarlyStopMonitor, get_module, get_neighbor_finder, load_model, make_logger, RandomNodeSelector, save_model
 )
@@ -19,7 +19,9 @@ from utils.training import copy_best_model
 
 
 def train_single_epoch(
-    model: AbsModel, data: Dataset, batch_size: int, backprop_every: int, device: torch.device, optimizer: Optimizer
+    emb_model: AbsEmbeddingModel, data: Dataset, batch_size: int,
+    backprop_every: int, device: torch.device, optimizer: Optimizer,
+    dry_run: bool = False
 ) -> float:
     criterion = torch.nn.BCELoss()
 
@@ -33,20 +35,18 @@ def train_single_epoch(
     batch_generator = data.batch_generator(batch_size, device)
 
     random_node_selector = RandomNodeSelector(data.dst_ids)
-    model.epoch_start_step()
-    model.train()
+    emb_model.epoch_start_step()
+    emb_model.train()
     for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
         # Forward propagation
         batch_size = pos_batch.size
         pos_batch.neg_ids = torch.from_numpy(random_node_selector.sample(batch_size)).long()
-        pos_prob, neg_prob = model.compute_edge_probabilities(pos_batch)
+        pos_prob, neg_prob = emb_model.compute_edge_probabilities(pos_batch)
         with torch.no_grad():
             pos_label = torch.ones(batch_size, dtype=torch.float)
             neg_label = torch.zeros(batch_size, dtype=torch.float)
         loss += criterion(pos_prob.squeeze(), pos_label) + criterion(neg_prob.squeeze(), neg_label)
 
-        sample_cnt += pos_batch.size
-        iter_cnt += 1
         if iter_cnt % backprop_every == 0 or sample_cnt == data.n_sample:  # Back propagation
             assert isinstance(loss, torch.Tensor)
             loss /= backprop_every
@@ -56,8 +56,13 @@ def train_single_epoch(
 
             loss = 0
             optimizer.zero_grad()
-            model.backward_post_step()
-    model.epoch_end_step()
+            emb_model.backward_post_step()
+
+        sample_cnt += pos_batch.size
+        iter_cnt += 1
+        if dry_run and iter_cnt == 5:
+            break
+    emb_model.epoch_end_step()
 
     return float(np.mean(loss_records))
 
@@ -83,9 +88,10 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
     # Read data
     data_dict, feature_repo = \
-        get_self_supervised_data(
+        get_data(
             logger=logger,
             workspace_path=workspace_path,
+            require_new_node_data=True,
             randomize_features=config['data']['randomize_features']
         )
 
@@ -108,26 +114,31 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
     # Job module & objects
     job_module = get_module(os.path.abspath(args.job_path))
-    get_model = getattr(job_module, 'get_model')
-    model = get_model(feature_repo, device)
-    assert isinstance(model, AbsModel)
+    get_emb_model = getattr(job_module, 'get_emb_model')
+    emb_model = get_emb_model(feature_repo, device)
+    assert isinstance(emb_model, AbsEmbeddingModel)
 
     num_epoch = train_config['num_epoch']
     early_stopper = EarlyStopMonitor(max_round=train_config['early_stop'])
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(emb_model.parameters(), lr=lr)
     for epoch in range(1, num_epoch + 1):
         logger.info(f'===== Start epoch {epoch} =====')
         logger.info(f'Run backprop every {backprop_every} {"iteration" if backprop_every == 1 else "iterations"}.')
         epoch_start_time = time.time()
 
-        model.set_neighbor_finder(train_neighbor_finder)
-        train_loss = train_single_epoch(model, data_dict['train'], train_batch_size, backprop_every, device, optimizer)
+        emb_model.set_neighbor_finder(train_neighbor_finder)
+        train_loss = train_single_epoch(
+            emb_model, data_dict['train'], train_batch_size, backprop_every, device, optimizer,
+            dry_run=args.dry
+        )
         logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
-        save_model(model=model, version_path=version_path, epoch=epoch)
+        save_model(model=emb_model, version_path=version_path, epoch=epoch)
 
-        model.set_neighbor_finder(full_neighbor_finder)
-        ap, auc = evaluate_edge_prediction(model, data_dict['eval'], eval_batch_size, evaluation_seed, device)
+        emb_model.set_neighbor_finder(full_neighbor_finder)
+        ap, auc = evaluate_edge_prediction(
+            emb_model, data_dict['eval'], eval_batch_size, evaluation_seed, device, dry_run=args.dry
+        )
         logger.info(f'Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')
 
         if early_stopper.early_stop_check(ap):
@@ -141,7 +152,9 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
     copy_best_model(version_path=version_path, best_epoch=early_stopper.best_epoch)
 
-    load_model(model, version_path=version_path)
-    model.set_neighbor_finder(full_neighbor_finder)
-    ap, auc = evaluate_edge_prediction(model, data_dict['eval'], eval_batch_size, evaluation_seed, device)
+    load_model(emb_model, version_path=version_path)
+    emb_model.set_neighbor_finder(full_neighbor_finder)
+    ap, auc = evaluate_edge_prediction(
+        emb_model, data_dict['eval'], eval_batch_size, evaluation_seed, device, dry_run=args.dry
+    )
     logger.info(f'Reload model and test. Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')

@@ -1,3 +1,3 @@
-from .abs_model import AbsModel, EmbeddingBundle
+from .abs_model import AbsEmbeddingModel, AbsBinaryClassificationModel, EmbeddingBundle
 
-__all__ = ['AbsModel', 'EmbeddingBundle']
+__all__ = ['AbsEmbeddingModel', 'AbsBinaryClassificationModel', 'EmbeddingBundle']

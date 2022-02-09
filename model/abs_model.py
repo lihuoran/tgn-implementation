@@ -10,9 +10,9 @@ from utils import NeighborFinder
 EmbeddingBundle = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
 
 
-class AbsModel(nn.Module, metaclass=ABCMeta):
+class AbsEmbeddingModel(nn.Module, metaclass=ABCMeta):
     def __init__(self, feature_repo: AbsFeatureRepo, device: torch.device) -> None:
-        super(AbsModel, self).__init__()
+        super(AbsEmbeddingModel, self).__init__()
         self._feature_repo = feature_repo
         self._device = device
         self._num_nodes = feature_repo.num_nodes()
@@ -38,6 +38,24 @@ class AbsModel(nn.Module, metaclass=ABCMeta):
 
     @abstractmethod
     def set_neighbor_finder(self, neighbor_finder: NeighborFinder) -> None:
+        raise NotImplementedError
+
+    def _forward_unimplemented(self, *input: Any) -> None:
+        pass
+
+
+class AbsBinaryClassificationModel(nn.Module, metaclass=ABCMeta):
+    def __init__(self, input_dim: int, device: torch.device) -> None:
+        super(AbsBinaryClassificationModel, self).__init__()
+        self._device = device
+        self._input_dim = input_dim
+
+    @property
+    def input_dim(self) -> int:
+        return self._input_dim
+
+    @abstractmethod
+    def get_prob(self, x: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
     def _forward_unimplemented(self, *input: Any) -> None:

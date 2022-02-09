@@ -104,7 +104,7 @@ class Dataset:
     dst_ids: np.ndarray  # int, 1D
     timestamps: np.ndarray  # float, 1D
     edge_ids: np.ndarray  # int, 1D
-    labels: np.ndarray  # int, 1D (0 or 1)
+    labels: np.ndarray  # float, 1D
 
     def __post_init__(self) -> None:
         self.n_sample = self.src_ids.shape[0]
@@ -189,7 +189,7 @@ class Dataset:
                 dst_ids=torch.from_numpy(self.dst_ids[start_idx:end_idx]).long().to(device),
                 timestamps=torch.from_numpy(self.timestamps[start_idx:end_idx]).float().to(device),
                 edge_ids=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long().to(device),
-                labels=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long().to(device),
+                labels=torch.from_numpy(self.edge_ids[start_idx:end_idx]).float().to(device),
             )
             yield batch
             start_idx = end_idx
@@ -278,9 +278,10 @@ def get_self_supervised_data_backup(
     return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
 
 
-def get_self_supervised_data(
+def get_data(
     logger: Logger,
     workspace_path: str,
+    require_new_node_data: bool,
     randomize_features: bool = False,
 ) -> Tuple[Dict[str, Dataset], AbsFeatureRepo]:
     edge_feature = np.load(f'{workspace_path}/data/edge_feature.npy')
@@ -290,9 +291,12 @@ def get_self_supervised_data(
     feature_repo = StaticFeatureRepo(node_feature=node_feature, edge_feature=edge_feature)
 
     path_template = os.path.join(workspace_path, 'data', 'graph_self_supervised_{}.csv')
+    data_keys = ['full', 'train', 'eval', 'test']
+    if require_new_node_data:
+        data_keys += ['nn_eval', 'nn_test']
     data_dict: Dict[str, Dataset] = {
         name: Dataset.from_csv(name=name, path=path_template.format(name))
-        for name in ['full', 'train', 'eval', 'test', 'nn_eval', 'nn_test']
+        for name in data_keys
     }
 
     # Show descriptions of all datasets

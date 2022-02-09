@@ -9,7 +9,7 @@ from model.tgn import (
 MESSAGE_DIM = 100
 
 
-def get_model_no_memory(feature_repo: AbsFeatureRepo, device: torch.device) -> TGN:
+def get_emb_model_no_memory(feature_repo: AbsFeatureRepo, device: torch.device) -> TGN:
     tgn = TGN(
         feature_repo, device,
         emb_module=SimpleEmbeddingModule(feature_repo, device, embedding_dim=feature_repo.node_feature_dim())
@@ -17,7 +17,7 @@ def get_model_no_memory(feature_repo: AbsFeatureRepo, device: torch.device) -> T
     return tgn
 
 
-def get_model_memory(feature_repo: AbsFeatureRepo, device: torch.device) -> TGN:
+def get_emb_model_memory(feature_repo: AbsFeatureRepo, device: torch.device) -> TGN:
     raw_message_dim = 3 * feature_repo.node_feature_dim() + feature_repo.edge_feature_dim()
     tgn = TGN(
         feature_repo=feature_repo, device=device,

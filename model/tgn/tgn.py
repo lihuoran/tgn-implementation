@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 
 from data import AbsFeatureRepo, DataBatch
-from model import AbsModel, EmbeddingBundle
+from model import AbsEmbeddingModel, EmbeddingBundle
 from module import MergeLayer, TimeEncoder
 from utils import NeighborFinder
 from .embedding_module import AbsEmbeddingModule
@@ -37,7 +37,7 @@ def _normalize(data: torch.Tensor, mean: float, std: float) -> torch.Tensor:
     return (data - mean) / std
 
 
-class TGN(AbsModel):
+class TGN(AbsEmbeddingModel):
     def __init__(
         self,
         feature_repo: AbsFeatureRepo,
