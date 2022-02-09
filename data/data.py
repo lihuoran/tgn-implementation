@@ -189,7 +189,7 @@ class Dataset:
                 dst_ids=torch.from_numpy(self.dst_ids[start_idx:end_idx]).long().to(device),
                 timestamps=torch.from_numpy(self.timestamps[start_idx:end_idx]).float().to(device),
                 edge_ids=torch.from_numpy(self.edge_ids[start_idx:end_idx]).long().to(device),
-                labels=torch.from_numpy(self.edge_ids[start_idx:end_idx]).float().to(device),
+                labels=torch.from_numpy(self.labels[start_idx:end_idx]).float().to(device),
             )
             yield batch
             start_idx = end_idx
@@ -278,10 +278,9 @@ def get_self_supervised_data_backup(
     return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
 
 
-def get_data(
+def get_self_supervised_data(
     logger: Logger,
     workspace_path: str,
-    require_new_node_data: bool,
     randomize_features: bool = False,
 ) -> Tuple[Dict[str, Dataset], AbsFeatureRepo]:
     edge_feature = np.load(f'{workspace_path}/data/edge_feature.npy')
@@ -291,9 +290,36 @@ def get_data(
     feature_repo = StaticFeatureRepo(node_feature=node_feature, edge_feature=edge_feature)
 
     path_template = os.path.join(workspace_path, 'data', 'graph_self_supervised_{}.csv')
+    data_keys = ['full', 'train', 'eval', 'test', 'nn_eval', 'nn_test']
+    data_dict: Dict[str, Dataset] = {
+        name: Dataset.from_csv(name=name, path=path_template.format(name))
+        for name in data_keys
+    }
+
+    # Show descriptions of all datasets
+    logger.info('===== Data statistics =====')
+    for data in data_dict.values():
+        data.describe(logger)
+    logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
+    logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
+    logger.info('')
+
+    return data_dict, feature_repo
+
+
+def get_supervised_data(
+    logger: Logger,
+    workspace_path: str,
+    randomize_features: bool = False,
+) -> Tuple[Dict[str, Dataset], AbsFeatureRepo]:
+    edge_feature = np.load(f'{workspace_path}/data/edge_feature.npy')
+    node_feature = np.load(f'{workspace_path}/data/node_feature.npy')
+    if randomize_features:
+        node_feature = np.random.rand(*node_feature.shape)
+    feature_repo = StaticFeatureRepo(node_feature=node_feature, edge_feature=edge_feature)
+
+    path_template = os.path.join(workspace_path, 'data', 'graph_supervised_{}.csv')
     data_keys = ['full', 'train', 'eval', 'test']
-    if require_new_node_data:
-        data_keys += ['nn_eval', 'nn_test']
     data_dict: Dict[str, Dataset] = {
         name: Dataset.from_csv(name=name, path=path_template.format(name))
         for name in data_keys

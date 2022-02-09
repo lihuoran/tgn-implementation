@@ -43,7 +43,24 @@ def evaluate_edge_prediction(
 
 def evaluate_node_classification(
     emb_model: AbsEmbeddingModel, cls_model: AbsBinaryClassificationModel,
-    data: Dataset, batch_size: int, seed: int, device: torch.device,
+    data: Dataset, batch_size: int, device: torch.device,
     dry_run: bool = False
 ) -> float:
-    raise NotImplementedError
+    pred_prob = []
+    emb_model.eval()
+    cls_model.eval()
+    with torch.no_grad():
+        batch_num = data.get_batch_num(batch_size)
+        batch_generator = data.batch_generator(batch_size, device)
+
+        iter_cnt = 0
+        for batch in tqdm(batch_generator, total=batch_num, desc=f'Evaluation progress', unit='batch'):
+            src_emb, _, _ = emb_model.compute_temporal_embeddings(batch)
+            src_prob = cls_model.get_prob(src_emb)
+            pred_prob += src_prob.detach().numpy().tolist()
+
+            iter_cnt += 1
+            if dry_run and iter_cnt == 5:
+                break
+
+    return roc_auc_score(data.labels[:len(pred_prob)], pred_prob)

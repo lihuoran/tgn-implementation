@@ -8,8 +8,7 @@ training:
   num_epoch: 100
   backprop_every: 1
   early_stop: 3
-  train_batch_size: 200
+  train_batch_size: 100
   eval_batch_size: 200
-  evaluation_seed: 0
-  learning_rate: 0.0001
+  learning_rate: 0.0003
   embedding_model_version: test_self_supervised

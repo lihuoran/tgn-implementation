@@ -3,13 +3,14 @@ import os
 import pathlib
 import shutil
 import time
+from copy import deepcopy
 
 import numpy as np
 import torch
 from torch.optim import Optimizer
 from tqdm import tqdm
 
-from data import Dataset, get_data
+from data import Dataset, get_supervised_data
 from evaluation import evaluate_node_classification
 from model import AbsBinaryClassificationModel, AbsEmbeddingModel
 from utils import (
@@ -35,10 +36,12 @@ def train_single_epoch(
     batch_generator = data.batch_generator(batch_size, device)
 
     emb_model.epoch_start_step()
-    emb_model.train()
+    emb_model.eval()
+    cls_model.train()
     for batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
         # Forward propagation
-        src_emb, dst_emb, _ = emb_model.compute_temporal_embeddings(batch)
+        with torch.no_grad():
+            src_emb, _, _ = emb_model.compute_temporal_embeddings(batch)
         src_prob = cls_model.get_prob(src_emb)
         src_pred = src_prob.sigmoid()
 
@@ -85,10 +88,9 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
 
     # Read data
     data_dict, feature_repo = \
-        get_data(
+        get_supervised_data(
             logger=logger,
             workspace_path=workspace_path,
-            require_new_node_data=False,
             randomize_features=config['data']['randomize_features']
         )
 
@@ -109,7 +111,6 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
 
     # Evaluation config
     eval_batch_size = train_config.get('eval_batch_size', train_batch_size)
-    evaluation_seed = train_config['evaluation_seed']
 
     # Job module & objects
     job_module = get_module(os.path.abspath(args.job_path))
@@ -128,6 +129,7 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
     num_epoch = train_config['num_epoch']
     early_stopper = EarlyStopMonitor(max_round=train_config['early_stop'])
     optimizer = torch.optim.Adam(cls_model.parameters(), lr=lr)
+    emb_model_state_after_train = None
     for epoch in range(1, num_epoch + 1):
         logger.info(f'===== Start epoch {epoch} =====')
         logger.info(f'Run backprop every {backprop_every} {"iteration" if backprop_every == 1 else "iterations"}.')
@@ -140,10 +142,12 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
         )
         logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
+        if emb_model_state_after_train is None:
+            emb_model_state_after_train = deepcopy(emb_model.state_dict())
         save_model(model=cls_model, version_path=version_path, epoch=epoch)
 
         auc = evaluate_node_classification(
-            emb_model, cls_model, data_dict['eval'], eval_batch_size, evaluation_seed, device, dry_run=args.dry
+            emb_model, cls_model, data_dict['eval'], eval_batch_size, device, dry_run=args.dry
         )
         logger.info(f'Evaluation result: AUC = {auc:.6f}.')
 
@@ -158,8 +162,9 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
 
     copy_best_model(version_path=version_path, best_epoch=early_stopper.best_epoch)
 
-    load_model(emb_model, version_path=version_path)
+    emb_model.load_state_dict(state_dict=emb_model_state_after_train)
+    load_model(cls_model, version_path=version_path)
     auc = evaluate_node_classification(
-        emb_model, cls_model, data_dict['eval'], eval_batch_size, evaluation_seed, device, dry_run=args.dry
+        emb_model, cls_model, data_dict['eval'], eval_batch_size, device, dry_run=args.dry
     )
     logger.info(f'Reload model and test. Evaluation result: AUC = {auc:.6f}.')

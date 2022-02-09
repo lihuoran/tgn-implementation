@@ -32,16 +32,17 @@ class EarlyStopMonitor(object):
     def best_epoch(self) -> int:
         return self._best_epoch
 
+    @property
+    def num_round(self) -> int:
+        return self._num_round
+
     def early_stop_check(self, curr_val: float) -> bool:
         self._epoch_count += 1
 
         if not self._higher_better:
             curr_val *= -1
 
-        if self._last_best is None:
-            self._last_best = curr_val
-
-        elif (curr_val - self._last_best) / np.abs(self._last_best) > self._tolerance:  # Has improvement
+        elif self._last_best is None or (curr_val - self._last_best) / np.abs(self._last_best) > self._tolerance:
             self._last_best = curr_val
             self._num_round = 0
             self._best_epoch = self._epoch_count
@@ -93,6 +94,8 @@ class NeighborFinder:
             self._seed = None
 
     def _find_before(self, src_id: int, cut_time: float) -> List[Tuple[float, int, int]]:
+        if src_id not in self._ts_lists:
+            return []
         i = np.searchsorted(self._ts_lists[src_id], cut_time)
         return self._adj_lists[src_id][:i]
 

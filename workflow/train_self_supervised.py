@@ -9,7 +9,7 @@ import torch
 from torch.optim import Optimizer
 from tqdm import tqdm
 
-from data import Dataset, get_data
+from data import Dataset, get_self_supervised_data
 from evaluation import evaluate_edge_prediction
 from model import AbsEmbeddingModel
 from utils import (
@@ -88,10 +88,9 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
     # Read data
     data_dict, feature_repo = \
-        get_data(
+        get_self_supervised_data(
             logger=logger,
             workspace_path=workspace_path,
-            require_new_node_data=True,
             randomize_features=config['data']['randomize_features']
         )
 
