@@ -12,7 +12,10 @@ from tqdm import tqdm
 from data import Dataset, get_self_supervised_data
 from evaluation import evaluate_edge_prediction
 from model import AbsModel
-from utils import EarlyStopMonitor, get_module, get_neighbor_finder, make_logger, RandomNodeSelector, save_model
+from utils import (
+    EarlyStopMonitor, get_module, get_neighbor_finder, load_model, make_logger, RandomNodeSelector, save_model
+)
+from utils.training import copy_best_model
 
 
 def train_single_epoch(
@@ -31,6 +34,7 @@ def train_single_epoch(
 
     random_node_selector = RandomNodeSelector(data.dst_ids)
     model.epoch_start_step()
+    model.train()
     for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
         # Forward propagation
         batch_size = pos_batch.size
@@ -120,6 +124,8 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
         train_loss = train_single_epoch(model, data_dict['train'], train_batch_size, backprop_every, device, optimizer)
         logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
+        save_model(model=model, version_path=version_path, epoch=epoch)
+
         model.set_neighbor_finder(full_neighbor_finder)
         ap, auc = evaluate_edge_prediction(model, data_dict['eval'], eval_batch_size, evaluation_seed, device)
         logger.info(f'Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')
@@ -129,13 +135,13 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
             logger.info(f'Best epoch = {early_stopper.best_epoch}')
             break
 
-        save_model(version_path=version_path, epoch=epoch, model=model)
-
         epoch_end_time = time.time()
         logger.info(f'=== Epoch {epoch} finished in {epoch_end_time - epoch_start_time:.2f} seconds.')
         logger.info('')
 
-    # eval_model = load_model(version_path=version_path, epoch=num_epoch)
-    # assert isinstance(eval_model, AbsModel)
-    # ap, auc = evaluate_edge_prediction(eval_model, eval_data, eval_batch_size, seed=evaluation_seed)
-    # logger.info(f'Reload model and test. Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')
+    copy_best_model(version_path=version_path, best_epoch=early_stopper.best_epoch)
+
+    load_model(model, version_path=version_path)
+    model.set_neighbor_finder(full_neighbor_finder)
+    ap, auc = evaluate_edge_prediction(model, data_dict['eval'], eval_batch_size, evaluation_seed, device)
+    logger.info(f'Reload model and test. Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')

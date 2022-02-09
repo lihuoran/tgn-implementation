@@ -19,14 +19,6 @@ class AbsModel(nn.Module, metaclass=ABCMeta):
         self._node_feature_dim = feature_repo.node_feature_dim()
         self._edge_feature_dim = feature_repo.edge_feature_dim()
 
-    @abstractmethod
-    def train_mode(self) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def eval_mode(self) -> None:
-        raise NotImplementedError
-
     def epoch_start_step(self) -> None:
         pass
 

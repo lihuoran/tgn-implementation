@@ -16,6 +16,8 @@ def evaluate_edge_prediction(
     random_node_selector = RandomNodeSelector(data.dst_ids, seed=seed)
     val_ap = []
     val_auc = []
+
+    model.eval()
     with torch.no_grad():
         batch_num = data.get_batch_num(batch_size)
         batch_generator = data.batch_generator(batch_size, device)

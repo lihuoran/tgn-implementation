@@ -1,5 +1,6 @@
 import collections
 import os
+import shutil
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -32,6 +33,8 @@ class EarlyStopMonitor(object):
         return self._best_epoch
 
     def early_stop_check(self, curr_val: float) -> bool:
+        self._epoch_count += 1
+
         if not self._higher_better:
             curr_val *= -1
 
@@ -45,7 +48,6 @@ class EarlyStopMonitor(object):
         else:  # No improvement
             self._num_round += 1
 
-        self._epoch_count += 1
         return self._num_round >= self._max_round
 
 
@@ -124,16 +126,23 @@ class NeighborFinder:
         self._random_state = np.random.RandomState(self._seed)
 
 
-def get_model_path(version_path: str, epoch: int) -> str:
-    return os.path.join(version_path, 'saved_models', f'model_{epoch:05d}.ckpt')
+def get_model_path(version_path: str, epoch: int = None) -> str:
+    if epoch is not None:
+        return os.path.join(version_path, 'saved_models', f'model_{epoch:05d}.ckpt')
+    else:
+        return os.path.join(version_path, 'saved_models', f'model_best.ckpt')
 
 
-def save_model(version_path: str, epoch: int, model: nn.Module) -> None:
-    torch.save(model, get_model_path(version_path, epoch))
+def save_model(model: nn.Module, version_path: str, epoch: int = None) -> None:
+    torch.save(model.state_dict(), get_model_path(version_path, epoch))
 
 
-def load_model(version_path: str, epoch: int) -> nn.Module:
-    return torch.load(get_model_path(version_path, epoch))
+def load_model(model: nn.Module, version_path: str, epoch: int = None) -> None:
+    model.load_state_dict(torch.load(get_model_path(version_path, epoch)))
+
+
+def copy_best_model(version_path: str, best_epoch: int) -> None:
+    shutil.copyfile(get_model_path(version_path, best_epoch), get_model_path(version_path))
 
 
 def get_neighbor_finder(data: Dataset, uniform: bool) -> NeighborFinder:

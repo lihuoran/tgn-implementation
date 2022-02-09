@@ -61,20 +61,7 @@ class TGN(AbsModel):
             output_dim=1  # TODO: remove constant numbers
         )
 
-    def train_mode(self) -> None:
-        self.train()
-        self._emb_module.train()
-        if self._use_memory:
-            self._message_function.train()
-            self._message_aggregator.train()
-            self._memory_updater.train()
-
-    def eval_mode(self) -> None:
-        self.eval()
-        self._emb_module.eval()
-
     def epoch_start_step(self) -> None:
-        self.train_mode()
         if self._use_memory:
             self._memory.reset()
 

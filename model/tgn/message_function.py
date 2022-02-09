@@ -9,8 +9,6 @@ class AbsMessageFunction(nn.Module, metaclass=ABCMeta):
     def __init__(self) -> None:
         super(AbsMessageFunction, self).__init__()
 
-        self._fc = nn.Linear(10, 5)
-
     @abstractmethod
     def compute_message(self, raw_message: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
