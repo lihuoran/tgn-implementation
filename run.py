@@ -4,7 +4,7 @@ import os
 import torch.autograd
 import yaml
 
-from workflow import run_data_self_supervised, run_train_self_supervised
+from workflow import run_data_self_supervised, run_data_supervised, run_train_self_supervised
 
 
 def get_args() -> argparse.Namespace:
@@ -23,6 +23,8 @@ def main(args: argparse.Namespace) -> None:
         run_train_self_supervised(args, config)
     elif config['job_type'] == 'data_self_supervised':
         run_data_self_supervised(args, config)
+    elif config['job_type'] == 'data_supervised':
+        run_data_supervised(args, config)
     else:
         raise ValueError(f'Unrecognized job type: {config["job_type"]}')
 
