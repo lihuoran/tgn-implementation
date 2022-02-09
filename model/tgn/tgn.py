@@ -29,9 +29,9 @@ class MemoryParams:
     use_dst_emb_in_message: bool = False
 
     src_time_shift_mean: float = 0.0
-    src_time_shift_std: float = 1
+    src_time_shift_std: float = 1.0
     dst_time_shift_mean: float = 0.0
-    dst_time_shift_std: float = 1
+    dst_time_shift_std: float = 1.0
 
 
 def _normalize(data: torch.Tensor, mean: float, std: float) -> torch.Tensor:
@@ -96,9 +96,8 @@ class TGN(AbsModel):
         self._memory_updater = self._memory_params.memory_updater
 
     def _compute_temporal_embeddings_with_memory(self, batch: DataBatch) -> EmbeddingBundle:
-        all_nodes = torch.arange(self._num_nodes).long()
         if self._memory_params.update_memory_at_start:
-            memory_tensor, last_update = self._get_updated_memory(all_nodes, self._memory.get_messages())
+            memory_tensor, last_update = self._get_updated_memory(self._memory.get_messages())
         else:
             memory_tensor = self._memory.get_memory_tensor()
             last_update = self._memory.get_last_update()
@@ -128,8 +127,8 @@ class TGN(AbsModel):
             )
 
         if self._memory_params.update_memory_at_start:
-            self._update_memory(batch.src_ids, self._memory.get_messages())
-            self._update_memory(batch.dst_ids, self._memory.get_messages())
+            self._update_memory(self._memory.get_messages(), batch.src_ids)
+            self._update_memory(self._memory.get_messages(), batch.dst_ids)
             assert torch.allclose(memory_tensor[batch.src_ids], self._memory.get_memory_tensor(batch.src_ids))
             assert torch.allclose(memory_tensor[batch.dst_ids], self._memory.get_memory_tensor(batch.dst_ids))
             self._memory.clear_messages(batch.src_ids)
@@ -141,8 +140,8 @@ class TGN(AbsModel):
             self._memory.store_messages(src_messages)
             self._memory.store_messages(dst_messages)
         else:
-            self._update_memory(torch.Tensor(list(src_messages.keys())).long(), src_messages)
-            self._update_memory(torch.Tensor(list(dst_messages.keys())).long(), dst_messages)
+            self._update_memory(src_messages)
+            self._update_memory(dst_messages)
 
         # if self.dyrep: ...  # TODO
         return src_emb, dst_emb, neg_emb
@@ -189,13 +188,17 @@ class TGN(AbsModel):
 
         return unique_nodes, unique_messages, unique_ts
 
-    def _update_memory(self, nodes: torch.Tensor, messages: Dict[int, List[Message]]) -> None:
+    def _update_memory(self, messages: Dict[int, List[Message]], nodes: torch.Tensor = None) -> None:
+        if nodes is None:
+            nodes = torch.Tensor(list(messages.keys())).long()
         unique_nodes, unique_messages, unique_ts = self._aggregate_and_compute_message(nodes, messages)
         self._memory_updater.update_memory(self._memory, unique_nodes, unique_messages, unique_ts)
 
     def _get_updated_memory(
-        self, nodes: torch.Tensor, messages: Dict[int, List[Message]]
+        self, messages: Dict[int, List[Message]], nodes: torch.Tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if nodes is None:
+            nodes = torch.Tensor(list(messages.keys())).long()
         unique_nodes, unique_messages, unique_ts = self._aggregate_and_compute_message(nodes, messages)
         return self._memory_updater.get_updated_memory(self._memory, unique_nodes, unique_messages, unique_ts)
 

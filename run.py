@@ -4,13 +4,14 @@ import os
 import torch.autograd
 import yaml
 
+from workflow.data_self_supervised import run_data_self_supervised
 from workflow.train_self_supervised import run_train_self_supervised
 
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser('TGN workflow')
     parser.add_argument('--job_path', type=str, help='Job folder path', required=True)
-    parser.add_argument('--version', type=str, help='Job folder path', required=True)
+    parser.add_argument('--version', type=str, help='Job folder path', required=False)
     args = parser.parse_args()
     return args
 
@@ -21,6 +22,10 @@ def main(args: argparse.Namespace) -> None:
 
     if config['job_type'] == 'train_self_supervised':
         run_train_self_supervised(args, config)
+    elif config['job_type'] == 'data_self_supervised':
+        run_data_self_supervised(args, config)
+    else:
+        raise ValueError(f'Unrecognized job type: {config["job_type"]}')
 
 
 if __name__ == '__main__':

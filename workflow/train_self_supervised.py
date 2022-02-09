@@ -80,17 +80,16 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
     logger = make_logger(os.path.join(version_path, 'log.txt'))
 
     # Read data
-    full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo = \
+    data_dict, feature_repo = \
         get_self_supervised_data(
             logger=logger,
             workspace_path=workspace_path,
-            different_new_nodes_between_val_and_test=config['data']['different_new_nodes'],
             randomize_features=config['data']['randomize_features']
         )
 
     # Neighbor finder
-    full_neighbor_finder = get_neighbor_finder(full_data, uniform=config['data']['uniform'])
-    train_neighbor_finder = get_neighbor_finder(train_data, uniform=config['data']['uniform'])
+    full_neighbor_finder = get_neighbor_finder(data_dict['full'], uniform=config['data']['uniform'])
+    train_neighbor_finder = get_neighbor_finder(data_dict['train'], uniform=config['data']['uniform'])
 
     # Training config
     train_config = config['training']
@@ -120,11 +119,11 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
         epoch_start_time = time.time()
 
         model.set_neighbor_finder(train_neighbor_finder)
-        train_loss = train_single_epoch(model, train_data, train_batch_size, backprop_every, device, optimizer)
+        train_loss = train_single_epoch(model, data_dict['train'], train_batch_size, backprop_every, device, optimizer)
         logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
         model.set_neighbor_finder(full_neighbor_finder)
-        ap, auc = evaluate_edge_prediction(model, val_data, eval_batch_size, evaluation_seed, device)
+        ap, auc = evaluate_edge_prediction(model, data_dict['eval'], eval_batch_size, evaluation_seed, device)
         logger.info(f'Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')
 
         if early_stopper.early_stop_check(ap):
@@ -140,5 +139,5 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
     # eval_model = load_model(version_path=version_path, epoch=num_epoch)
     # assert isinstance(eval_model, AbsModel)
-    # ap, auc = evaluate_edge_prediction(eval_model, val_data, eval_batch_size, seed=evaluation_seed)
+    # ap, auc = evaluate_edge_prediction(eval_model, eval_data, eval_batch_size, seed=evaluation_seed)
     # logger.info(f'Reload model and test. Evaluation result: AP = {ap:.6f}, AUC = {auc:.6f}.')

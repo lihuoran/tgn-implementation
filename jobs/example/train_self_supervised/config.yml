@@ -1,0 +1,14 @@
+job_type: train_self_supervised
+workspace_path: /home/huoranli/tgn-workspace
+data:
+  uniform: False
+  randomize_features: False
+training:
+  device: cpu
+  num_epoch: 100
+  backprop_every: 1
+  early_stop: 5
+  train_batch_size: 200
+  eval_batch_size: 200
+  evaluation_seed: 0
+  learning_rate: 0.0001

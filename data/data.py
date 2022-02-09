@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import math
+import os
 import random
 from abc import abstractmethod
 from dataclasses import dataclass
 from logging import Logger
-from typing import Generator, Set, Tuple
+from typing import Dict, Generator, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -172,7 +173,8 @@ class Dataset:
         return self._get_subset_by_indicator(name, select)
 
     def describe(self, logger: Logger) -> None:
-        logger.info(f"Dataset {self.name} has {self.n_sample} edges and {self.num_unique_nodes} unique nodes.")
+        msg = f"Dataset {self.name} has {self.n_sample} edges and {self.num_unique_nodes} unique nodes."
+        logger.info(msg)
 
     def get_batch_num(self, batch_size: int) -> int:
         return int(math.ceil(self.n_sample / batch_size))
@@ -190,6 +192,28 @@ class Dataset:
             )
             yield batch
             start_idx = end_idx
+
+    @staticmethod
+    def from_csv(name: str, path: str) -> Dataset:
+        graph_df = pd.read_csv(path)
+        return Dataset(
+            name=name,
+            src_ids=graph_df.u.values,
+            dst_ids=graph_df.i.values,
+            timestamps=graph_df.ts.values,
+            labels=graph_df.label.values,
+            edge_ids=graph_df.idx.values,
+        )
+
+    def to_csv(self, path: str) -> None:
+        df = pd.DataFrame({
+            'u': self.src_ids,
+            'i': self.dst_ids,
+            'ts': self.timestamps,
+            'label': self.labels,
+            'idx': self.edge_ids,
+        })
+        df.to_csv(path)
 
 
 def get_self_supervised_data_backup(
@@ -256,57 +280,26 @@ def get_self_supervised_data_backup(
 def get_self_supervised_data(
     logger: Logger,
     workspace_path: str,
-    different_new_nodes_between_val_and_test: bool = False,
     randomize_features: bool = False,
-) -> Tuple[Dataset, Dataset, Dataset, Dataset, Dataset, Dataset, AbsFeatureRepo]:
-    # Load data from files
-    graph_df = pd.read_csv(f'{workspace_path}/data/graph.csv')
+) -> Tuple[Dict[str, Dataset], AbsFeatureRepo]:
     edge_feature = np.load(f'{workspace_path}/data/edge_feature.npy')
     node_feature = np.load(f'{workspace_path}/data/node_feature.npy')
     if randomize_features:
         node_feature = np.random.rand(*node_feature.shape)
-
-    # Create full data
-    full_data = Dataset(
-        name='full_data',
-        src_ids=graph_df.u.values, dst_ids=graph_df.i.values, timestamps=graph_df.ts.values,
-        labels=graph_df.label.values, edge_ids=graph_df.idx.values,
-    )
     feature_repo = StaticFeatureRepo(node_feature=node_feature, edge_feature=edge_feature)
 
-    # Create validation data & testing data
-    val_time, test_time = list(np.quantile(full_data.timestamps, [0.70, 0.85]))
-    val_data = full_data.get_subset_by_time_range('val_data', lower=val_time + 1e-5, upper=test_time + 1e-5)
-    test_data = full_data.get_subset_by_time_range('test_data', lower=test_time + 1e-5)
-
-    # Sample new nodes
-    random.seed(2020)
-    val_and_test_nodes = set(val_data.src_ids) | set(val_data.dst_ids) | set(test_data.src_ids) | set(test_data.dst_ids)
-    new_val_and_test_nodes = set(random.sample(sorted(list(val_and_test_nodes)), int(0.1 * full_data.num_unique_nodes)))
-
-    # Create training data
-    train_data = full_data.get_subset_by_removing_nodes('', new_val_and_test_nodes)\
-        .get_subset_by_time_range('train_data', upper=val_time + 1e-5)
-    assert len(train_data.unique_nodes & new_val_and_test_nodes) == 0
-
-    # Create pure new node data
-    if different_new_nodes_between_val_and_test:
-        node_list = list(new_val_and_test_nodes)
-        n = len(node_list) // 2
-        val_new_nodes = set(node_list[:n])
-        test_new_nodes = set(node_list[n:])
-    else:
-        # val_new_nodes = test_new_nodes = new_val_and_test_nodes
-        val_new_nodes = test_new_nodes = full_data.unique_nodes - train_data.unique_nodes
-    new_node_val_data = val_data.get_subset_by_selecting_nodes('new_node_val_data', val_new_nodes)
-    new_node_test_data = test_data.get_subset_by_selecting_nodes('new_node_test_data', test_new_nodes)
+    path_template = os.path.join(workspace_path, 'data', 'graph_self_supervised_{}.csv')
+    data_dict: Dict[str, Dataset] = {
+        name: Dataset.from_csv(name=name, path=path_template.format(name))
+        for name in ['full', 'train', 'eval', 'test', 'nn_eval', 'nn_test']
+    }
 
     # Show descriptions of all datasets
     logger.info('===== Data statistics =====')
-    for data in [full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data]:
+    for data in data_dict.values():
         data.describe(logger)
     logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
     logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
     logger.info('')
 
-    return full_data, train_data, val_data, test_data, new_node_val_data, new_node_test_data, feature_repo
+    return data_dict, feature_repo
