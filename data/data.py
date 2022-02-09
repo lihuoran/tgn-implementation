@@ -45,6 +45,7 @@ class AbsFeatureRepo(object):
 class StaticFeatureRepo(AbsFeatureRepo):
     """Used during training, since the data will not be changed during training.
     """
+
     def __init__(self, node_feature: np.ndarray, edge_feature: np.ndarray) -> None:
         super(StaticFeatureRepo, self).__init__()
 
@@ -99,11 +100,11 @@ class DataBatch:
 @dataclass
 class Dataset:
     name: str
-    src_ids: np.ndarray     # int, 1D
-    dst_ids: np.ndarray     # int, 1D
+    src_ids: np.ndarray  # int, 1D
+    dst_ids: np.ndarray  # int, 1D
     timestamps: np.ndarray  # float, 1D
     edge_ids: np.ndarray  # int, 1D
-    labels: np.ndarray      # int, 1D (0 or 1)
+    labels: np.ndarray  # int, 1D (0 or 1)
 
     def __post_init__(self) -> None:
         self.n_sample = self.src_ids.shape[0]
@@ -248,7 +249,7 @@ def get_self_supervised_data_backup(
     new_val_and_test_nodes = set(random.sample(val_and_test_nodes, int(0.1 * full_data.num_unique_nodes)))
 
     # Create training data
-    train_data = full_data.get_subset_by_removing_nodes('', new_val_and_test_nodes)\
+    train_data = full_data.get_subset_by_removing_nodes('', new_val_and_test_nodes) \
         .get_subset_by_time_range('train_data', upper=val_time)
     assert len(train_data.unique_nodes & new_val_and_test_nodes) == 0
 

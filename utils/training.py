@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from data.data import Dataset
+from data import Dataset
 
 
 class EarlyStopMonitor(object):

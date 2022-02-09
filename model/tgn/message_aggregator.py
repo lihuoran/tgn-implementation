@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Tuple
 import torch
 from torch import nn
 
-from model.tgn.memory import Message
+from .memory import Message
 
 
 class AbsMessageAggregator(nn.Module, metaclass=ABCMeta):

@@ -6,10 +6,10 @@ import torch
 from torch import nn
 from torch.nn.functional import embedding
 
-from data.data import AbsFeatureRepo
-from model.tgn.temporal_attention import TemporalAttentionLayer
-from module.time_encoder import TimeEncoder
-from utils.training import NeighborFinder
+from data import AbsFeatureRepo
+from module import TimeEncoder
+from utils import NeighborFinder
+from .temporal_attention import TemporalAttentionLayer
 
 
 class AbsEmbeddingModule(nn.Module, metaclass=ABCMeta):

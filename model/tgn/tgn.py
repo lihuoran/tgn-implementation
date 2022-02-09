@@ -4,16 +4,15 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 
-from data.data import AbsFeatureRepo, DataBatch
-from model.abs_model import AbsModel, EmbeddingBundle
-from model.tgn.embedding_module import AbsEmbeddingModule
-from model.tgn.memory import Memory, Message
-from model.tgn.memory_updater import AbsMemoryUpdater
-from model.tgn.message_aggregator import AbsMessageAggregator
-from model.tgn.message_function import AbsMessageFunction
-from module.merge_layer import MergeLayer
-from module.time_encoder import TimeEncoder
-from utils.training import NeighborFinder
+from data import AbsFeatureRepo, DataBatch
+from model import AbsModel, EmbeddingBundle
+from module import MergeLayer, TimeEncoder
+from utils import NeighborFinder
+from .embedding_module import AbsEmbeddingModule
+from .memory import Memory, Message
+from .memory_updater import AbsMemoryUpdater
+from .message_aggregator import AbsMessageAggregator
+from .message_function import AbsMessageFunction
 
 
 @dataclass

@@ -1,11 +1,10 @@
 import torch
 
-from data.data import AbsFeatureRepo
-from model.tgn.embedding_module import GraphAttentionEmbedding, SimpleEmbeddingModule
-from model.tgn.memory_updater import GRUMemoryUpdater
-from model.tgn.message_aggregator import LastMessageAggregator
-from model.tgn.message_function import IdentityMessageFunction
-from model.tgn.tgn import MemoryParams, TGN
+from data import AbsFeatureRepo
+from model.tgn import (
+    GraphAttentionEmbedding, GRUMemoryUpdater, IdentityMessageFunction, LastMessageAggregator, MemoryParams,
+    SimpleEmbeddingModule, TGN,
+)
 
 MESSAGE_DIM = 100
 

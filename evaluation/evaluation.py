@@ -5,9 +5,9 @@ import torch
 from sklearn.metrics import average_precision_score, roc_auc_score
 from tqdm import tqdm
 
-from data.data import Dataset
-from model.abs_model import AbsModel
-from utils.training import RandomNodeSelector
+from data import Dataset
+from model import AbsModel
+from utils import RandomNodeSelector
 
 
 def evaluate_edge_prediction(

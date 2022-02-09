@@ -4,7 +4,7 @@ from typing import Any, Tuple
 import torch
 from torch import nn
 
-from model.tgn.memory import Memory, MemorySnapshot
+from .memory import Memory
 
 
 class AbsMemoryUpdater(nn.Module, metaclass=ABCMeta):

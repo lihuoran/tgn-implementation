@@ -3,7 +3,7 @@ from typing import Any, Tuple
 import torch
 from torch import nn
 
-from module.merge_layer import MergeLayer
+from module import MergeLayer
 
 
 class TemporalAttentionLayer(torch.nn.Module):
@@ -33,10 +33,10 @@ class TemporalAttentionLayer(torch.nn.Module):
         self,
         node_features: torch.Tensor,  # (B, node_feat_dim)
         node_time_emb: torch.Tensor,  # (B, 1, time_dim)
-        neighbor_emb: torch.Tensor,   # (B, num_neighbor, node_feat_dim)
+        neighbor_emb: torch.Tensor,  # (B, num_neighbor, node_feat_dim)
         edge_time_emb: torch.Tensor,  # (B, num_neighbor, time_dim)
         edge_features: torch.Tensor,  # (B, num_neighbor, edge_feat_dim)
-        mask: torch.Tensor            # (B, num_neighbor)
+        mask: torch.Tensor  # (B, num_neighbor)
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         src_node_feat_unrolled = node_features.unsqueeze(dim=1)  # (B, 1, node_feat_dim)
 

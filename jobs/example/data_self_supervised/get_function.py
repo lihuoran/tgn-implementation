@@ -5,7 +5,7 @@ from logging import Logger
 import numpy as np
 import pandas as pd
 
-from data.data import Dataset
+from data import Dataset
 
 
 def process_data(
@@ -37,7 +37,7 @@ def process_data(
     )
 
     # Create training data
-    train_data = full_data.get_subset_by_removing_nodes('', new_eval_and_test_nodes)\
+    train_data = full_data.get_subset_by_removing_nodes('', new_eval_and_test_nodes) \
         .get_subset_by_time_range('train_data', upper=eval_time + 1e-5)
     assert len(train_data.unique_nodes & new_eval_and_test_nodes) == 0
 

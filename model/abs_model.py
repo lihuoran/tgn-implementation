@@ -4,9 +4,8 @@ from typing import Any, Optional, Tuple
 import torch
 from torch import nn
 
-from data.data import AbsFeatureRepo, DataBatch
-from utils.training import NeighborFinder
-
+from data import AbsFeatureRepo, DataBatch
+from utils import NeighborFinder
 
 EmbeddingBundle = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
 

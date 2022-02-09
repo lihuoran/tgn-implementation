@@ -9,12 +9,10 @@ import torch
 from torch.optim import Optimizer
 from tqdm import tqdm
 
-from data.data import Dataset, get_self_supervised_data
-from evaluation.evaluation import evaluate_edge_prediction
-from model.abs_model import AbsModel
-from utils.log import make_logger
-from utils.path import get_module
-from utils.training import EarlyStopMonitor, RandomNodeSelector, get_neighbor_finder, save_model
+from data import Dataset, get_self_supervised_data
+from evaluation import evaluate_edge_prediction
+from model import AbsModel
+from utils import EarlyStopMonitor, get_module, get_neighbor_finder, make_logger, RandomNodeSelector, save_model
 
 
 def train_single_epoch(
