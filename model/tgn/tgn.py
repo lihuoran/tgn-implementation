@@ -4,10 +4,9 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 
-from data import AbsFeatureRepo, DataBatch
+from data import AbsFeatureRepo, DataBatch, NeighborFinder
 from model import AbsEmbeddingModel, EmbeddingBundle
 from module import MergeLayer, TimeEncoder
-from utils import NeighborFinder
 from .embedding_module import AbsEmbeddingModule
 from .memory import Memory, Message
 from .memory_updater import AbsMemoryUpdater

@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from utils import WorkflowContext
+
 
 class AbsFeatureRepo(object):
     def __init__(self) -> None:
@@ -173,9 +175,9 @@ class Dataset:
         select: np.ndarray = np.logical_or(np.isin(self.src_ids, select_nodes), np.isin(self.dst_ids, select_nodes))
         return self._get_subset_by_indicator(name, select)
 
-    def describe(self, logger: Logger) -> None:
+    def describe(self, workflow_context: WorkflowContext) -> None:
         msg = f"Dataset {self.name} has {self.n_sample} edges and {self.num_unique_nodes} unique nodes."
-        logger.info(msg)
+        workflow_context.logger.info(msg)
 
     def get_batch_num(self, batch_size: int) -> int:
         return int(math.ceil(self.n_sample / batch_size))
@@ -279,7 +281,7 @@ def get_self_supervised_data_backup(
 
 
 def get_self_supervised_data(
-    logger: Logger,
+    workflow_context: WorkflowContext,
     workspace_path: str,
     randomize_features: bool = False,
 ) -> Tuple[Dict[str, Dataset], AbsFeatureRepo]:
@@ -297,18 +299,18 @@ def get_self_supervised_data(
     }
 
     # Show descriptions of all datasets
-    logger.info('===== Data statistics =====')
+    workflow_context.logger.info('===== Data statistics =====')
     for data in data_dict.values():
-        data.describe(logger)
-    logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
-    logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
-    logger.info('')
+        data.describe(workflow_context)
+    workflow_context.logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
+    workflow_context.logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
+    workflow_context.logger.info('')
 
     return data_dict, feature_repo
 
 
 def get_supervised_data(
-    logger: Logger,
+    workflow_context: WorkflowContext,
     workspace_path: str,
     randomize_features: bool = False,
 ) -> Tuple[Dict[str, Dataset], AbsFeatureRepo]:
@@ -326,11 +328,11 @@ def get_supervised_data(
     }
 
     # Show descriptions of all datasets
-    logger.info('===== Data statistics =====')
+    workflow_context.logger.info('===== Data statistics =====')
     for data in data_dict.values():
-        data.describe(logger)
-    logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
-    logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
-    logger.info('')
+        data.describe(workflow_context)
+    workflow_context.logger.info(f'Node feature shape: ({feature_repo.num_nodes()}, {feature_repo.node_feature_dim()})')
+    workflow_context.logger.info(f'Edge feature shape: ({feature_repo.num_edges()}, {feature_repo.edge_feature_dim()})')
+    workflow_context.logger.info('')
 
     return data_dict, feature_repo

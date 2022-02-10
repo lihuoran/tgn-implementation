@@ -7,12 +7,12 @@ from tqdm import tqdm
 
 from data import Dataset
 from model import AbsBinaryClassificationModel, AbsEmbeddingModel
-from utils import RandomNodeSelector
+from utils import RandomNodeSelector, WorkflowContext
 
 
 def evaluate_edge_prediction(
+    workflow_context: WorkflowContext,
     emb_model: AbsEmbeddingModel, data: Dataset, batch_size: int, seed: int, device: torch.device,
-    dry_run: bool = False
 ) -> Tuple[float, float]:
     random_node_selector = RandomNodeSelector(data.dst_ids, seed=seed)
     val_ap = []
@@ -36,15 +36,15 @@ def evaluate_edge_prediction(
             val_auc.append(roc_auc_score(true_label, pred_score))
 
             iter_cnt += 1
-            if dry_run and iter_cnt == 5:
+            if workflow_context.dry_run and iter_cnt >= workflow_context.dry_run_iter_limit:
                 break
     return float(np.mean(val_ap)), float(np.mean(val_auc))
 
 
 def evaluate_node_classification(
+    workflow_context: WorkflowContext,
     cls_model: AbsBinaryClassificationModel, emb_model_output: torch.Tensor,
     data: Dataset, batch_size: int, device: torch.device,
-    dry_run: bool = False
 ) -> float:
     pred_prob = []
     cls_model.eval()
@@ -61,7 +61,7 @@ def evaluate_node_classification(
 
             sample_cnt += batch.size
             iter_cnt += 1
-            if dry_run and iter_cnt == 5:
+            if workflow_context.dry_run and iter_cnt >= workflow_context.dry_run_iter_limit:
                 break
 
     return roc_auc_score(data.labels[:len(pred_prob)], pred_prob)

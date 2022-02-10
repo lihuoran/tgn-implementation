@@ -6,9 +6,8 @@ import torch
 from torch import nn
 from torch.nn.functional import embedding
 
-from data import AbsFeatureRepo
+from data import AbsFeatureRepo, NeighborFinder
 from module import TimeEncoder
-from utils import NeighborFinder
 from .temporal_attention import TemporalAttentionLayer
 
 
