@@ -1,22 +1,20 @@
 import argparse
 import os
-import pathlib
-import shutil
 import time
 from typing import Tuple
 
 import numpy as np
 import torch
 from torch.optim import Optimizer
-from tqdm import tqdm
 
-from data import Dataset, get_neighbor_finder, get_supervised_data
-from evaluation import evaluate_node_classification
+from data import DataBatch, Dataset, get_neighbor_finder, get_supervised_data
 from model import AbsBinaryClassificationModel, AbsEmbeddingModel
 from utils import (
     EarlyStopMonitor, get_module, load_model, make_logger, save_model, WorkflowContext
 )
 from utils.training import copy_best_model
+from .evaluation import evaluate_node_classification
+from .utils import prepare_workspace
 
 
 def train_single_epoch(
@@ -33,11 +31,10 @@ def train_single_epoch(
     optimizer.zero_grad()
     loss_records = []
 
-    batch_num = data.get_batch_num(batch_size)
-    batch_generator = data.batch_generator(batch_size, device)
-
     cls_model.train()
-    for batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
+    for batch in data.batch_generator(workflow_context, batch_size, device, desc=f'Training progress'):
+        assert isinstance(batch, DataBatch)
+
         # Forward propagation
         src_emb = emb_model_output[sample_cnt:sample_cnt + batch.size]
         src_prob = cls_model.get_prob(src_emb)
@@ -57,8 +54,6 @@ def train_single_epoch(
 
         sample_cnt += batch.size
         iter_cnt += 1
-        if workflow_context.dry_run and iter_cnt >= workflow_context.dry_run_iter_limit:
-            break
 
     return float(np.mean(loss_records))
 
@@ -70,52 +65,40 @@ def precompute_embedding_model_output(
     eval_data: Dataset, eval_batch_size: int,
     device: torch.device,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    #
-    batch_num = train_data.get_batch_num(train_batch_size)
-    batch_generator = train_data.batch_generator(train_batch_size, device)
     emb_model.epoch_start_step()
     emb_model.eval()
+
+    #
     iter_cnt = 0
     train_embs = []
-    for batch in tqdm(batch_generator, total=batch_num, desc=f'Pre-computing progress: train', unit='batch'):
+    for batch in train_data.batch_generator(
+        workflow_context, train_batch_size, device, desc=f'Pre-computing progress: train'
+    ):
+        assert isinstance(batch, DataBatch)
+
         with torch.no_grad():
             src_emb, _, _ = emb_model.compute_temporal_embeddings(batch)
             train_embs.append(src_emb)
 
         iter_cnt += 1
-        if workflow_context.dry_run and iter_cnt >= workflow_context.dry_run_iter_limit:
-            break
     emb_model.epoch_end_step()
 
     #
-    batch_num = eval_data.get_batch_num(eval_batch_size)
-    batch_generator = eval_data.batch_generator(eval_batch_size, device)
     iter_cnt = 0
     eval_embs = []
-    for batch in tqdm(batch_generator, total=batch_num, desc=f'Pre-computing progress: eval', unit='batch'):
+    for batch in eval_data.batch_generator(
+        workflow_context, eval_batch_size, device, desc=f'Pre-computing progress: eval'
+    ):
+        assert isinstance(batch, DataBatch)
+
         with torch.no_grad():
             src_emb, _, _ = emb_model.compute_temporal_embeddings(batch)
             eval_embs.append(src_emb)
 
         iter_cnt += 1
-        if workflow_context.dry_run and iter_cnt >= workflow_context.dry_run_iter_limit:
-            break
     emb_model.epoch_end_step()
 
     return torch.cat(train_embs), torch.cat(eval_embs)
-
-
-def prepare_workspace(version_path: str) -> None:
-    if os.path.exists(version_path):
-        raise ValueError(f'{version_path} already exists.')
-
-    os.mkdir(version_path)
-    os.mkdir(os.path.join(version_path, 'saved_models'))
-
-    # Backup code
-    current_path = os.path.abspath(pathlib.Path())
-    backup_path = os.path.join(version_path, '_code_backup')
-    shutil.copytree(current_path, backup_path)
 
 
 def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
@@ -127,8 +110,6 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
         logger=make_logger(os.path.join(version_path, 'log.txt')),
         dry_run=args.dry,
     )
-
-    # Run model test
     if workflow_context.dry_run:
         workflow_context.logger.info('Run workflow in dry mode.')
 

@@ -1,22 +1,20 @@
 import argparse
 import os
-import pathlib
-import shutil
 import time
 
 import numpy as np
 import torch
 from torch.optim import Optimizer
-from tqdm import tqdm
 
-from data import Dataset, get_neighbor_finder, get_self_supervised_data
-from evaluation import evaluate_edge_prediction
+from data import DataBatch, Dataset, get_neighbor_finder, get_self_supervised_data
 from model import AbsEmbeddingModel
 from utils import (
     EarlyStopMonitor, get_module, load_model, make_logger, RandomNodeSelector, save_model,
     WorkflowContext
 )
 from utils.training import copy_best_model
+from .evaluation import evaluate_edge_prediction
+from .utils import prepare_workspace
 
 
 def train_single_epoch(
@@ -32,13 +30,12 @@ def train_single_epoch(
     optimizer.zero_grad()
     loss_records = []
 
-    batch_num = data.get_batch_num(batch_size)
-    batch_generator = data.batch_generator(batch_size, device)
-
     random_node_selector = RandomNodeSelector(data.dst_ids)
     emb_model.epoch_start_step()
     emb_model.train()
-    for pos_batch in tqdm(batch_generator, total=batch_num, desc=f'Training progress', unit='batch'):
+    for pos_batch in data.batch_generator(workflow_context, batch_size, device, desc=f'Training progress'):
+        assert isinstance(pos_batch, DataBatch)
+
         # Forward propagation
         batch_size = pos_batch.size
         pos_batch.neg_ids = torch.from_numpy(random_node_selector.sample(batch_size)).long()
@@ -61,24 +58,9 @@ def train_single_epoch(
 
         sample_cnt += pos_batch.size
         iter_cnt += 1
-        if workflow_context.dry_run and iter_cnt >= workflow_context.dry_run_iter_limit:
-            break
     emb_model.epoch_end_step()
 
     return float(np.mean(loss_records))
-
-
-def prepare_workspace(version_path: str) -> None:
-    if os.path.exists(version_path):
-        raise ValueError(f'{version_path} already exists.')
-
-    os.mkdir(version_path)
-    os.mkdir(os.path.join(version_path, 'saved_models'))
-
-    # Backup code
-    current_path = os.path.abspath(pathlib.Path())
-    backup_path = os.path.join(version_path, '_code_backup')
-    shutil.copytree(current_path, backup_path)
 
 
 def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
@@ -90,8 +72,6 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
         logger=make_logger(os.path.join(version_path, 'log.txt')),
         dry_run=args.dry,
     )
-
-    # Run model test
     if workflow_context.dry_run:
         workflow_context.logger.info('Run workflow in dry mode.')
 

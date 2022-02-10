@@ -11,6 +11,7 @@ from typing import Dict, Generator, Set, Tuple
 import numpy as np
 import pandas as pd
 import torch
+from tqdm import tqdm
 
 from utils import WorkflowContext
 
@@ -182,9 +183,19 @@ class Dataset:
     def get_batch_num(self, batch_size: int) -> int:
         return int(math.ceil(self.n_sample / batch_size))
 
-    def batch_generator(self, batch_size: int, device: torch.device) -> Generator[DataBatch, None, None]:
+    def batch_generator(
+        self,
+        workflow_context: WorkflowContext,
+        batch_size: int,
+        device: torch.device,
+        desc: str = None,
+    ) -> Generator[DataBatch, None, None]:
+        batch_num = int(math.ceil(self.n_sample / batch_size))
+        if workflow_context.dry_run:
+            batch_num = min(batch_num, workflow_context.dry_run_iter_limit)
+
         start_idx = 0
-        while start_idx < self.n_sample:
+        for _ in tqdm(range(batch_num), desc=desc, unit='batch'):
             end_idx = min(self.n_sample, start_idx + batch_size)
             batch = DataBatch(
                 src_ids=torch.from_numpy(self.src_ids[start_idx:end_idx]).long().to(device),
@@ -194,11 +205,12 @@ class Dataset:
                 labels=torch.from_numpy(self.labels[start_idx:end_idx]).float().to(device),
             )
             yield batch
+
             start_idx = end_idx
 
     @staticmethod
-    def from_csv(name: str, path: str) -> Dataset:
-        graph_df = pd.read_csv(path)
+    def from_csv(name: str, path: str, nrows: int = None) -> Dataset:
+        graph_df = pd.read_csv(path, nrows=nrows)
         return Dataset(
             name=name,
             src_ids=graph_df.u.values,

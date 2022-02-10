@@ -10,3 +10,7 @@ class WorkflowContext:
     @property
     def dry_run_iter_limit(self) -> int:
         return 5
+
+    @property
+    def dry_run_data_limit(self) -> int:
+        return 2000
