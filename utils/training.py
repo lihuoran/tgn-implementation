@@ -1,6 +1,7 @@
 import collections
 import os
 import shutil
+from logging import Logger
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -136,12 +137,16 @@ def get_model_path(version_path: str, epoch: int = None) -> str:
         return os.path.join(version_path, 'saved_models', f'model_best.ckpt')
 
 
-def save_model(model: nn.Module, version_path: str, epoch: int = None) -> None:
-    torch.save(model.state_dict(), get_model_path(version_path, epoch))
+def save_model(logger: Logger, model: nn.Module, version_path: str, epoch: int = None) -> None:
+    path = get_model_path(version_path, epoch)
+    logger.info(f'Save {type(model)} to {path}.')
+    torch.save(model.state_dict(), path)
 
 
-def load_model(model: nn.Module, version_path: str, epoch: int = None) -> None:
-    model.load_state_dict(torch.load(get_model_path(version_path, epoch)))
+def load_model(logger: Logger, model: nn.Module, version_path: str, epoch: int = None) -> None:
+    path = get_model_path(version_path, epoch)
+    logger.info(f'Load {type(model)} from {path}.')
+    model.load_state_dict(torch.load(path))
 
 
 def copy_best_model(version_path: str, best_epoch: int) -> None:

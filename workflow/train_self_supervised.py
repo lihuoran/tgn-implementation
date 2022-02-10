@@ -86,6 +86,10 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
     prepare_workspace(version_path)
     logger = make_logger(os.path.join(version_path, 'log.txt'))
 
+    # Run model test
+    if args.dry:
+        logger.info('Run workflow in dry mode.')
+
     # Read data
     data_dict, feature_repo = \
         get_self_supervised_data(
@@ -132,7 +136,7 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
         )
         logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
-        save_model(model=emb_model, version_path=version_path, epoch=epoch)
+        save_model(logger, model=emb_model, version_path=version_path, epoch=epoch)
 
         emb_model.set_neighbor_finder(full_neighbor_finder)
         ap, auc = evaluate_edge_prediction(
@@ -151,7 +155,7 @@ def run_train_self_supervised(args: argparse.Namespace, config: dict) -> None:
 
     copy_best_model(version_path=version_path, best_epoch=early_stopper.best_epoch)
 
-    load_model(emb_model, version_path=version_path)
+    load_model(logger, emb_model, version_path=version_path)
     emb_model.set_neighbor_finder(full_neighbor_finder)
     ap, auc = evaluate_edge_prediction(
         emb_model, data_dict['eval'], eval_batch_size, evaluation_seed, device, dry_run=args.dry
