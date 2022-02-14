@@ -6,6 +6,7 @@ from typing import Tuple
 import numpy as np
 import torch
 from torch.optim import Optimizer
+from torch.utils.tensorboard import SummaryWriter
 
 from data import DataBatch, Dataset, get_neighbor_finder, get_supervised_data
 from model import AbsBinaryClassificationModel, AbsEmbeddingModel
@@ -21,8 +22,8 @@ def train_single_epoch(
     workflow_context: WorkflowContext,
     cls_model: AbsBinaryClassificationModel, emb_model_output: torch.Tensor,
     data: Dataset, batch_size: int,
-    backprop_every: int, device: torch.device, optimizer: Optimizer,
-) -> float:
+    backprop_every: int, device: torch.device, optimizer: Optimizer, accumulated_iter_cnt: int
+) -> Tuple[float, int]:
     criterion = torch.nn.BCELoss()
 
     iter_cnt = 0
@@ -49,13 +50,17 @@ def train_single_epoch(
             optimizer.step()
             loss_records.append(loss.item())
 
+            workflow_context.summary_writer.add_scalar(
+                'Training/Training loss', loss.item() / backprop_every, accumulated_iter_cnt + iter_cnt
+            )
+
             loss = 0
             optimizer.zero_grad()
 
         sample_cnt += batch.size
         iter_cnt += 1
 
-    return float(np.mean(loss_records))
+    return float(np.mean(loss_records)), accumulated_iter_cnt + iter_cnt
 
 
 def precompute_embedding_model_output(
@@ -109,6 +114,7 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
     workflow_context = WorkflowContext(
         logger=make_logger(os.path.join(version_path, 'log.txt')),
         dry_run=args.dry,
+        summary_writer=SummaryWriter(version_path),
     )
     if workflow_context.dry_run:
         workflow_context.logger.info('Run workflow in dry mode.')
@@ -165,6 +171,7 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
     num_epoch = train_config['num_epoch']
     early_stopper = EarlyStopMonitor(max_round=train_config['early_stop'])
     optimizer = torch.optim.Adam(cls_model.parameters(), lr=lr)
+    accumulated_iter_cnt = 0
     for epoch in range(1, num_epoch + 1):
         workflow_context.logger.info(f'===== Start epoch {epoch} =====')
         workflow_context.logger.info(
@@ -172,10 +179,10 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
         )
         epoch_start_time = time.time()
 
-        train_loss = train_single_epoch(
+        train_loss, accumulated_iter_cnt = train_single_epoch(
             workflow_context,
             cls_model, emb_model_output_train, data_dict['train'],
-            train_batch_size, backprop_every, device, optimizer,
+            train_batch_size, backprop_every, device, optimizer, accumulated_iter_cnt
         )
         workflow_context.logger.info(f'Training finished. Mean training loss = {train_loss:.6f}')
 
@@ -185,6 +192,7 @@ def run_train_supervised(args: argparse.Namespace, config: dict) -> None:
             workflow_context, cls_model, emb_model_output_eval, data_dict['eval'], eval_batch_size, device,
         )
         workflow_context.logger.info(f'Evaluation result: AUC = {auc:.6f}.')
+        workflow_context.summary_writer.add_scalar('Evaluation/AUC', auc, epoch)
 
         if early_stopper.early_stop_check(auc):
             workflow_context.logger.info(f'No improvement over {train_config["early_stop"]} rounds, early stop.')
